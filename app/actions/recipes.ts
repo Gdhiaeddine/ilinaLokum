@@ -10,7 +10,7 @@ export async function getRecipes() {
 
   const { data, error } = await supabase
     .from("recipes")
-    .select("*, products(name), recipe_items(*, ingredients(name, unit))")
+    .select("*, products(name), recipe_items(*, products(name, unit))")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -18,7 +18,7 @@ export async function getRecipes() {
   return data ?? [];
 }
 
-export async function addRecipe(formData: FormData, items: { ingredientId: string; quantity: number }[]) {
+export async function addRecipe(formData: FormData, items: { productId: string; quantity: number }[]) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -33,7 +33,7 @@ export async function addRecipe(formData: FormData, items: { ingredientId: strin
 
   const itemsToInsert = items.map(item => ({
     recipe_id: recipe.id,
-    ingredient_id: item.ingredientId,
+    product_id: item.productId,
     quantity: item.quantity,
   }));
 

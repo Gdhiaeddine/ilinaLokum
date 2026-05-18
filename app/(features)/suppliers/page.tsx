@@ -100,7 +100,7 @@ export default function SuppliersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl font-bold text-[#2C2419]">Fournisseurs</h1>
-          <p className="text-sm text-[#8C735A]">Gerez vos fournisseurs d'ingredients</p>
+          <p className="text-sm text-[#8C735A]">Gerez vos fournisseurs</p>
         </div>
         <button
           onClick={openCreate}
@@ -123,49 +123,67 @@ export default function SuppliersPage() {
         />
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-[#FAF3EB]">
-              <tr>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Nom</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Telephone</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Email</th>
-                <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Adresse</th>
-                <th className="text-right px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E8D5C4]/50">
-              {filteredSuppliers.map((supplier: any) => (
-                <tr key={supplier.id} className="hover:bg-[#FAF3EB]/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
-                        <IconFactory name="Suppliers" className="text-white" size={16} />
-                      </div>
-                      <span className="font-medium text-[#2C2419] text-sm">{supplier.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.phone || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.email || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.address || '-'}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEdit(supplier)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
-                        <IconFactory name="Edit" size={16} />
-                      </button>
-                      <button onClick={() => deleteMutation.mutate(supplier.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <IconFactory name="Delete" size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {filteredSuppliers.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-8 text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F5E9DA] flex items-center justify-center">
+            <IconFactory name="Suppliers" size={24} className="text-[#C9A227]" />
+          </div>
+          <h3 className="font-serif text-lg font-bold text-[#2C2419] mb-2">
+            {search ? 'Aucun resultat' : 'Aucun fournisseur enregistre'}
+          </h3>
+          <p className="text-sm text-[#8C735A] mb-4">
+            {search ? 'Essayez avec d\'autres termes' : 'Commencez en ajoutant votre premier fournisseur'}
+          </p>
+          {!search && (
+            <button onClick={openCreate} className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
+              Ajouter un fournisseur
+            </button>
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-[#FAF3EB]">
+                <tr>
+                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Nom</th>
+                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Telephone</th>
+                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Email</th>
+                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Adresse</th>
+                  <th className="text-right px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E8D5C4]/50">
+                {filteredSuppliers.map((supplier: any) => (
+                  <tr key={supplier.id} className="hover:bg-[#FAF3EB]/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
+                          <IconFactory name="Suppliers" className="text-white" size={16} />
+                        </div>
+                        <span className="font-medium text-[#2C2419] text-sm">{supplier.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.phone || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.email || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-[#6B4F3A]">{supplier.address || '-'}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => openEdit(supplier)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
+                          <IconFactory name="Edit" size={16} />
+                        </button>
+                        <button onClick={() => deleteMutation.mutate(supplier.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <IconFactory name="Delete" size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (

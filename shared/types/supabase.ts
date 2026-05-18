@@ -9,6 +9,19 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      categories: {
+        Row: {
+          id: string;
+          created_at: string;
+          name: string;
+          user_id: string;
+        };
+        Insert: Omit<
+          Database["public"]["Tables"]["categories"]["Row"],
+          "id" | "created_at" | "user_id"
+        >;
+        Update: Partial<Database["public"]["Tables"]["categories"]["Insert"]>;
+      };
       suppliers: {
         Row: {
           id: string;
@@ -26,23 +39,27 @@ export interface Database {
         >;
         Update: Partial<Database["public"]["Tables"]["suppliers"]["Insert"]>;
       };
-      ingredients: {
+      products: {
         Row: {
           id: string;
           created_at: string;
           name: string;
-          unit: string;
+          image_url: string | null;
+          category_id: string | null;
+          selling_price: number;
+          production_cost: number;
           current_stock: number;
           min_stock: number;
+          unit: string;
           avg_price: number;
           supplier_id: string | null;
           user_id: string;
         };
         Insert: Omit<
-          Database["public"]["Tables"]["ingredients"]["Row"],
+          Database["public"]["Tables"]["products"]["Row"],
           "id" | "created_at" | "user_id"
         >;
-        Update: Partial<Database["public"]["Tables"]["ingredients"]["Insert"]>;
+        Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
       };
       purchase_orders: {
         Row: {
@@ -64,7 +81,7 @@ export interface Database {
           id: string;
           created_at: string;
           purchase_order_id: string;
-          ingredient_id: string;
+          product_id: string;
           quantity: number;
           unit_price: number;
         };
@@ -74,28 +91,12 @@ export interface Database {
         >;
         Update: Partial<Database["public"]["Tables"]["purchase_items"]["Insert"]>;
       };
-      products: {
-        Row: {
-          id: string;
-          created_at: string;
-          name: string;
-          image_url: string | null;
-          selling_price: number;
-          production_cost: number;
-          category: string;
-          user_id: string;
-        };
-        Insert: Omit<
-          Database["public"]["Tables"]["products"]["Row"],
-          "id" | "created_at" | "user_id"
-        >;
-        Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
-      };
       recipes: {
         Row: {
           id: string;
           created_at: string;
           product_id: string;
+          name: string | null;
           notes: string | null;
           user_id: string;
         };
@@ -110,7 +111,7 @@ export interface Database {
           id: string;
           created_at: string;
           recipe_id: string;
-          ingredient_id: string;
+          product_id: string;
           quantity: number;
         };
         Insert: Omit<
@@ -142,6 +143,7 @@ export interface Database {
           product_id: string;
           quantity: number;
           unit_price: number;
+          cost_price: number;
         };
         Insert: Omit<
           Database["public"]["Tables"]["sale_items"]["Row"],
@@ -153,7 +155,7 @@ export interface Database {
         Row: {
           id: string;
           created_at: string;
-          ingredient_id: string;
+          product_id: string;
           quantity_change: number;
           reason: string;
           reference_id: string | null;

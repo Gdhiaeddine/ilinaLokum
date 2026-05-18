@@ -2,17 +2,22 @@
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const data = [
-  { name: "Lun", sales: 450, profit: 180 },
-  { name: "Mar", sales: 520, profit: 210 },
-  { name: "Mer", sales: 380, profit: 150 },
-  { name: "Jeu", sales: 610, profit: 280 },
-  { name: "Ven", sales: 750, profit: 320 },
-  { name: "Sam", sales: 890, profit: 420 },
-  { name: "Dim", sales: 650, profit: 290 },
-];
+interface SalesChartProps {
+  data: { day: string; revenue: number; profit: number }[];
+}
 
-export function SalesChart() {
+export function SalesChart({ data }: SalesChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-[300px] w-full flex items-center justify-center text-[#8C735A]">
+        <p className="text-sm">Aucune donnee pour cette periode</p>
+      </div>
+    );
+  }
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.revenue, d.profit)), 1);
+  const step = maxVal > 1000 ? Math.ceil(maxVal / 5 / 1000) * 1000 : Math.ceil(maxVal / 5 / 100) * 100;
+
   return (
     <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -29,14 +34,16 @@ export function SalesChart() {
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#E8D5C4" />
           <XAxis
-            dataKey="name"
+            dataKey="day"
             tick={{ fill: "#6B4F3A", fontSize: 12 }}
             axisLine={{ stroke: "#E8D5C4" }}
           />
           <YAxis
             tick={{ fill: "#6B4F3A", fontSize: 12 }}
             axisLine={{ stroke: "#E8D5C4" }}
-            tickFormatter={(val: number) => `${val}DA`}
+            domain={[0, maxVal + step]}
+            ticks={Array.from({ length: 6 }, (_, i) => i * step)}
+            tickFormatter={(val: number) => val >= 1000 ? `${val / 1000}k` : `${val}`}
           />
           <Tooltip
             contentStyle={{
@@ -45,15 +52,15 @@ export function SalesChart() {
               borderRadius: "12px",
               boxShadow: "0 4px 20px rgba(201,162,39,0.1)",
             }}
-            formatter={(value: number) => [`${value} DA` as any, ""]}
+            formatter={(value: number, name: string) => [`${value.toFixed(2)} DA` as any, name === "revenue" ? "Revenue" : "Benefice"]}
           />
           <Area
             type="monotone"
-            dataKey="sales"
+            dataKey="revenue"
             stroke="#C9A227"
             strokeWidth={3}
             fill="url(#salesGradient)"
-            name="Ventes"
+            name="revenue"
           />
           <Area
             type="monotone"
@@ -61,7 +68,7 @@ export function SalesChart() {
             stroke="#2C7A2C"
             strokeWidth={2}
             fill="url(#profitGradient)"
-            name="Bénéfice"
+            name="profit"
           />
         </AreaChart>
       </ResponsiveContainer>

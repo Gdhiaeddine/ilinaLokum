@@ -10,9 +10,8 @@ const navItems = [
   { href: "/sales", label: "Ventes", icon: "Sales" as const },
   { href: "/purchases", label: "Achats", icon: "Purchases" as const },
   { href: "/products", label: "Produits", icon: "Products" as const },
-  { href: "/recipes", label: "Recettes", icon: "Recipes" as const },
+  { href: "/categories", label: "Catégories", icon: "Categories" as const },
   { href: "/suppliers", label: "Fournisseurs", icon: "Suppliers" as const },
-  { href: "/ingredients", label: "Ingrédients", icon: "Ingredients" as const },
   { href: "/reports", label: "Rapports", icon: "Reports" as const },
   { href: "/settings", label: "Paramètres", icon: "Settings" as const },
 ];

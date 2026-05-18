@@ -2,17 +2,21 @@
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
-const data = [
-  { name: "Kunafa Fromage", value: 80 },
-  { name: "Kunafa Pistache", value: 65 },
-  { name: "Kunafa Nutella", value: 45 },
-  { name: "Mini Kunafa", value: 55 },
-  { name: "Boissons", value: 30 },
-];
+interface ProductChartProps {
+  data: { name: string; quantity: number }[];
+}
 
 const COLORS = ["#D4AF37", "#C9A227", "#A67C00", "#8C735A", "#6B4F3A"];
 
-export function ProductChart() {
+export function ProductChart({ data }: ProductChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-[300px] w-full flex items-center justify-center text-[#8C735A]">
+        <p className="text-sm">Aucune donnee pour cette periode</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -35,9 +39,9 @@ export function ProductChart() {
             formatter={(val: number) => [`${val} vendus` as any, ""]}
             labelStyle={{ display: "none" }}
           />
-          <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={24}>
+          <Bar dataKey="quantity" radius={[0, 8, 8, 0]} barSize={24}>
             {data.map((_entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index]} />
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Bar>
         </BarChart>

@@ -10,7 +10,7 @@ export async function getPurchases() {
 
   const { data, error } = await supabase
     .from("purchase_orders")
-    .select("*, purchase_items(*, ingredients(name)), suppliers(name)")
+    .select("*, purchase_items(*, products(name, unit)), suppliers(name)")
     .eq("user_id", user.id)
     .order("date", { ascending: false });
 
@@ -18,7 +18,7 @@ export async function getPurchases() {
   return data ?? [];
 }
 
-export async function addPurchase(formData: FormData, items: { ingredientId: string; quantity: number; price: number }[]) {
+export async function addPurchase(formData: FormData, items: { productId: string; quantity: number; price: number }[]) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -36,7 +36,7 @@ export async function addPurchase(formData: FormData, items: { ingredientId: str
 
   const itemsToInsert = items.map(item => ({
     purchase_order_id: purchaseData.id,
-    ingredient_id: item.ingredientId,
+    product_id: item.productId,
     quantity: item.quantity,
     unit_price: item.price,
   }));
@@ -44,6 +44,27 @@ export async function addPurchase(formData: FormData, items: { ingredientId: str
   const { error: itemsError } = await supabase.from("purchase_items").insert(itemsToInsert);
 
   if (itemsError) throw itemsError;
+
+  for (const item of items) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("current_stock")
+      .eq("id", item.productId)
+      .single();
+
+    await supabase.from("products").update({
+      current_stock: (product?.current_stock ?? 0) + item.quantity,
+      production_cost: item.price,
+    }).eq("id", item.productId);
+  }
+
   revalidatePath("/purchases");
-  revalidatePath("/ingredients");
+  revalidatePath("/products");
+}
+
+export async function deletePurchase(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
+  if (error) throw error;
+  revalidatePath("/purchases");
 }

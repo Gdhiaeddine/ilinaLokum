@@ -8,6 +8,7 @@ const iconMap = {
   Suppliers: Icons.Truck,
   Ingredients: Icons.Package,
   Products: Icons.Cake,
+  Categories: Icons.Tags,
   Recipes: Icons.ReceiptText,
   Sales: Icons.ShoppingCart,
   Purchases: Icons.ArrowDownToLine,

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const PurchaseItemSchema = z.object({
   id: z.string().uuid().optional(),
-  ingredient_id: z.string().uuid(),
+  product_id: z.string().uuid(),
   quantity: z.number().positive("La quantité doit être positive"),
   unit_price: z.number().positive("Le prix unitaire doit être positif"),
 });

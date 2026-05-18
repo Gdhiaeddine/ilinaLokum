@@ -32,19 +32,32 @@ CREATE TABLE suppliers (
   CONSTRAINT unique_supplier_name_per_user UNIQUE (user_id, name)
 );
 
--- Ingredients/Stock
-CREATE TABLE ingredients (
+-- Categories
+CREATE TABLE categories (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'kg',
+  CONSTRAINT unique_category_name_per_user UNIQUE (user_id, name)
+);
+
+-- Products (act as items: both final and raw materials)
+CREATE TABLE products (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  image_url TEXT,
+  category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  selling_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  production_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
   current_stock DECIMAL(10,2) NOT NULL DEFAULT 0,
   min_stock DECIMAL(10,2) NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL DEFAULT 'kg',
   avg_price DECIMAL(10,2) NOT NULL DEFAULT 0,
   supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
 
-  CONSTRAINT unique_ingredient_name_per_user UNIQUE (user_id, name)
+  CONSTRAINT unique_product_name_per_user UNIQUE (user_id, name)
 );
 
 -- Purchase Orders
@@ -57,28 +70,14 @@ CREATE TABLE purchase_orders (
   date DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
--- Purchase Items
+-- Purchase Items (now link to products instead of ingredients)
 CREATE TABLE purchase_items (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   purchase_order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-  ingredient_id UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
   unit_price DECIMAL(10,2) NOT NULL DEFAULT 0
-);
-
--- Products
-CREATE TABLE products (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  image_url TEXT,
-  selling_price DECIMAL(10,2) NOT NULL DEFAULT 0,
-  production_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
-  category TEXT NOT NULL DEFAULT 'kunafa',
-
-  CONSTRAINT unique_product_name_per_user UNIQUE (user_id, name)
 );
 
 -- Recipes
@@ -91,15 +90,15 @@ CREATE TABLE recipes (
   notes TEXT
 );
 
--- Recipe Items (ingredients in a recipe)
+-- Recipe Items (now link to products instead of ingredients)
 CREATE TABLE recipe_items (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-  ingredient_id UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
 
-  CONSTRAINT unique_recipe_ingredient UNIQUE (recipe_id, ingredient_id)
+  CONSTRAINT unique_recipe_product UNIQUE (recipe_id, product_id)
 );
 
 -- Sales
@@ -119,19 +118,20 @@ CREATE TABLE sale_items (
   sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
   product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL DEFAULT 1,
-  unit_price DECIMAL(10,2) NOT NULL DEFAULT 0
+  unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  cost_price DECIMAL(10,2) NOT NULL DEFAULT 0
 );
 
--- Stock Movements
+-- Stock Movements (now link to products instead of ingredients)
 CREATE TABLE stock_movements (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  ingredient_id UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-  quantity_change DECIMAL(10,2) NOT NULL, -- positive = in, negative = out
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity_change DECIMAL(10,2) NOT NULL,
   reason TEXT NOT NULL,
   reference_id UUID,
-  movement_type TEXT DEFAULT 'manual' -- 'purchase', 'sale', 'manual', 'adjustment'
+  movement_type TEXT DEFAULT 'manual'
 );
 
 -- Expenses (miscellaneous)
@@ -145,31 +145,31 @@ CREATE TABLE expenses (
 );
 
 -- Create indexes
+CREATE INDEX idx_categories_user ON categories(user_id);
 CREATE INDEX idx_suppliers_user ON suppliers(user_id);
-CREATE INDEX idx_ingredients_user ON ingredients(user_id);
-CREATE INDEX idx_ingredients_supplier ON ingredients(supplier_id);
+CREATE INDEX idx_products_user ON products(user_id);
+CREATE INDEX idx_products_supplier ON products(supplier_id);
+CREATE INDEX idx_products_category ON products(category_id);
 CREATE INDEX idx_purchase_orders_user ON purchase_orders(user_id);
 CREATE INDEX idx_purchase_items_order ON purchase_items(purchase_order_id);
-CREATE INDEX idx_products_user ON products(user_id);
-CREATE INDEX idx_products_category ON products(category);
 CREATE INDEX idx_recipes_product ON recipes(product_id);
 CREATE INDEX idx_recipe_items_recipe ON recipe_items(recipe_id);
 CREATE INDEX idx_sales_user ON sales(user_id);
 CREATE INDEX idx_sales_date ON sales(date);
 CREATE INDEX idx_sale_items_sale ON sale_items(sale_id);
 CREATE INDEX idx_stock_movements_user ON stock_movements(user_id);
-CREATE INDEX idx_stock_movements_ingredient ON stock_movements(ingredient_id);
+CREATE INDEX idx_stock_movements_product ON stock_movements(product_id);
 
 -- =====================================================
 -- Row Level Security (RLS)
 -- =====================================================
 
 -- Enable RLS on all tables
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipe_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
@@ -178,10 +178,13 @@ ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can only see their own data
+CREATE POLICY "Users can only see their own categories" ON categories
+  FOR ALL USING (auth.uid() = user_id);
+
 CREATE POLICY "Users can only see their own suppliers" ON suppliers
   FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can only see their own ingredients" ON ingredients
+CREATE POLICY "Users can only see their own products" ON products
   FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can only see their own purchase_orders" ON purchase_orders
@@ -193,9 +196,6 @@ CREATE POLICY "Users can only see their own purchase_items" ON purchase_items
       SELECT id FROM purchase_orders WHERE user_id = auth.uid()
     )
   );
-
-CREATE POLICY "Users can only see their own products" ON products
-  FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can only see their own recipes" ON recipes
   FOR ALL USING (auth.uid() = user_id);
@@ -227,18 +227,18 @@ CREATE POLICY "Users can only see their own expenses" ON expenses
 -- Triggers
 -- =====================================================
 
--- When a purchase is made, update ingredient stock
+-- When a purchase is made, update product stock
 CREATE OR REPLACE FUNCTION update_stock_on_purchase()
 RETURNS TRIGGER AS $$
 BEGIN
-  UPDATE ingredients
+  UPDATE products
   SET current_stock = current_stock + NEW.quantity
-  WHERE id = NEW.ingredient_id;
+  WHERE id = NEW.product_id;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- When a sale is made, deduct from ingredient stock (via recipes)
+-- When a sale is made, deduct from product stock (via recipes)
 CREATE OR REPLACE FUNCTION deduct_stock_on_sale()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -246,15 +246,15 @@ DECLARE
 BEGIN
   -- Find the recipe for this product
   FOR recipe_record IN
-    SELECT ri.ingredient_id, ri.quantity * NEW.quantity as total_quantity
+    SELECT ri.product_id, ri.quantity * NEW.quantity as total_quantity
     FROM recipe_items ri
     JOIN recipes r ON ri.recipe_id = r.id
     WHERE r.product_id = NEW.product_id
   LOOP
     -- Deduct from stock
-    UPDATE ingredients
+    UPDATE products
     SET current_stock = GREATEST(current_stock - recipe_record.total_quantity, 0)
-    WHERE id = recipe_record.ingredient_id;
+    WHERE id = recipe_record.product_id;
   END LOOP;
 
   RETURN NEW;
@@ -288,7 +288,7 @@ CREATE OR REPLACE FUNCTION log_stock_movement()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.current_stock <> OLD.current_stock THEN
-    INSERT INTO stock_movements (user_id, ingredient_id, quantity_change, reason, reference_id)
+    INSERT INTO stock_movements (user_id, product_id, quantity_change, reason, reference_id)
     VALUES (
       NEW.user_id,
       NEW.id,
@@ -300,5 +300,3 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
-print('Schema Kunafa Manager created successfully!')
