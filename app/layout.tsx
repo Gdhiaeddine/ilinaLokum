@@ -18,7 +18,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Kunafa Manager",
+  title: "Ilina Lokum Manager",
   description: "Gestion premium de stock et calcul de profit pour boutique de Kunafa",
 };
 

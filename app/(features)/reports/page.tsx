@@ -3,13 +3,16 @@
 import { useState, useMemo } from 'react'
 import { IconFactory } from '@/shared/icon-factory'
 import { useQuery } from '@tanstack/react-query'
-import { getReportsData } from '@/app/actions/sales'
+import { getReportsData, getDailyReportData, getRangeReportData } from '@/app/actions/sales'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const COLORS = ['#D4AF37', '#C9A227', '#A67C00', '#8C735A', '#6B4F3A']
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   const periodLabels = {
     daily: `Aujourd'hui`,
@@ -28,6 +31,32 @@ export default function ReportsPage() {
     queryFn: () => getReportsData(period),
   })
 
+  const { data: dailyReport } = useQuery({
+    queryKey: ['daily-report'],
+    queryFn: getDailyReportData,
+    enabled: period === 'daily',
+  })
+
+  const now2 = new Date()
+  const dayOfWeek2 = now2.getDay()
+  const mondayOffset2 = dayOfWeek2 === 0 ? -6 : 1 - dayOfWeek2
+  const rangeStart = period === 'weekly'
+    ? new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + mondayOffset2)
+    : period === 'monthly'
+    ? new Date(now2.getFullYear(), now2.getMonth(), 1)
+    : now2
+  const rangeEnd = period === 'weekly'
+    ? new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + mondayOffset2 + 6)
+    : period === 'monthly'
+    ? new Date(now2.getFullYear(), now2.getMonth() + 1, 0)
+    : now2
+
+  const { data: rangeReport } = useQuery({
+    queryKey: ['range-report', period],
+    queryFn: () => getRangeReportData(rangeStart.toISOString(), rangeEnd.toISOString()),
+    enabled: period !== 'daily',
+  })
+
   const chartData = useMemo(() => {
     if (!data) return []
     return data.chartData.map(d => ({
@@ -37,6 +66,285 @@ export default function ReportsPage() {
       cost: d.cost,
     }))
   }, [data])
+
+  async function exportPdf() {
+    setIsExportingPdf(true)
+
+    try {
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+
+      if (period === 'daily') {
+        if (!dailyReport) return
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(20)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Rapport Journalier', pageWidth / 2, 20, { align: 'center' })
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(11)
+        doc.setTextColor(140, 115, 90)
+        doc.text(dailyReport.date, pageWidth / 2, 28, { align: 'center' })
+
+        let yPos = 40
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Achats', 14, yPos)
+        yPos += 4
+
+        if (dailyReport.purchases.length > 0) {
+          autoTable(doc, {
+            startY: yPos,
+            head: [['Fournisseur', 'Articles', 'Total (DA)']],
+            body: dailyReport.purchases.map(p => [p.supplier, p.items, p.total.toFixed(2)]),
+            foot: [['', 'Total', dailyReport.totalPurchases.toFixed(2) + ' DA']],
+            theme: 'grid',
+            headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+            styles: { fontSize: 9, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 90 }, 2: { cellWidth: 35, halign: 'right' } },
+          })
+          yPos = (doc as any).lastAutoTable.finalY + 10
+        } else {
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(10)
+          doc.setTextColor(140, 115, 90)
+          doc.text('Aucun achat aujourd\'hui', 14, yPos + 5)
+          yPos += 15
+        }
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Ventes par Produit', 14, yPos)
+        yPos += 4
+
+        if (dailyReport.products.length > 0) {
+          autoTable(doc, {
+            startY: yPos,
+            head: [['Produit', 'Quantite', 'Revenue (DA)', 'Consommation (DA)', 'Profit (DA)']],
+            body: dailyReport.products.map(p => [p.name, p.quantity.toString(), p.revenue.toFixed(2), p.consumption.toFixed(2), p.profit.toFixed(2)]),
+            theme: 'grid',
+            headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            styles: { fontSize: 9, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 28, halign: 'right' }, 3: { cellWidth: 28, halign: 'right' }, 4: { cellWidth: 28, halign: 'right' } },
+            didParseCell: function(data: any) {
+              if (data.column.index === 4 && data.section === 'body') {
+                const val = parseFloat(data.cell.raw as string)
+                if (val > 0) data.cell.styles.textColor = [44, 122, 44]
+                else if (val < 0) data.cell.styles.textColor = [220, 50, 50]
+              }
+            },
+          })
+          yPos = (doc as any).lastAutoTable.finalY + 10
+        } else {
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(10)
+          doc.setTextColor(140, 115, 90)
+          doc.text('Aucune vente aujourd\'hui', 14, yPos + 5)
+          yPos += 15
+        }
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Stock Actuel', 14, yPos)
+        yPos += 4
+
+        if (dailyReport.stock.length > 0) {
+          autoTable(doc, {
+            startY: yPos,
+            head: [['Produit', 'Stock', 'Unite']],
+            body: dailyReport.stock.map(s => [s.name, s.stock.toString(), s.unit]),
+            theme: 'grid',
+            headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            styles: { fontSize: 9, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 25, halign: 'center' } },
+          })
+          yPos = (doc as any).lastAutoTable.finalY + 10
+        }
+
+        if (yPos > 250) { doc.addPage(); yPos = 20 }
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Resume Financier', 14, yPos)
+        yPos += 8
+
+        autoTable(doc, {
+          startY: yPos,
+          body: [
+            ['Chiffre d\'affaires (CA)', `${dailyReport.totalRevenue.toFixed(2)} DA`],
+            ['Consommation', `${dailyReport.totalConsumption.toFixed(2)} DA`],
+            ['Total Achats', `${dailyReport.totalPurchases.toFixed(2)} DA`],
+            ['Total Profit', `${dailyReport.totalProfit.toFixed(2)} DA`],
+          ],
+          theme: 'grid',
+          styles: { fontSize: 10, cellPadding: 5 },
+          columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
+          didParseCell: function(data: any) {
+            if (data.row.index === 3) {
+              const val = parseFloat(data.cell.raw as string)
+              if (data.column.index === 1) {
+                data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
+                data.cell.styles.fontSize = 12
+              }
+              if (!data.row.styles) data.row.styles = {}
+              data.row.styles.fillColor = [245, 233, 218]
+            }
+          },
+        })
+      } else {
+        if (!rangeReport) return
+        const periodTitle = period === 'weekly' ? 'Rapport Hebdomadaire' : 'Rapport Mensuel'
+        const dateRange = `${rangeStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} - ${rangeEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(20)
+        doc.setTextColor(44, 36, 25)
+        doc.text(periodTitle, pageWidth / 2, 20, { align: 'center' })
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(11)
+        doc.setTextColor(140, 115, 90)
+        doc.text(dateRange, pageWidth / 2, 28, { align: 'center' })
+
+        let yPos = 40
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Recapitulatif par Jour', 14, yPos)
+        yPos += 4
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'CA (DA)', 'Consommation (DA)', 'Achats (DA)', 'Profit (DA)']],
+          body: rangeReport.days.map(d => [
+            d.label,
+            d.revenue.toFixed(2),
+            d.consumption.toFixed(2),
+            d.purchases.toFixed(2),
+            d.profit.toFixed(2),
+          ]),
+          foot: [['Total', rangeReport.totalRevenue.toFixed(2), rangeReport.totalConsumption.toFixed(2), rangeReport.totalPurchases.toFixed(2), rangeReport.totalProfit.toFixed(2)]],
+          theme: 'grid',
+          headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+          footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 28, halign: 'right' }, 2: { cellWidth: 30, halign: 'right' }, 3: { cellWidth: 28, halign: 'right' }, 4: { cellWidth: 28, halign: 'right' } },
+          didParseCell: function(data: any) {
+            if (data.column.index === 4 && data.section === 'body') {
+              const val = parseFloat(data.cell.raw as string)
+              if (val > 0) data.cell.styles.textColor = [44, 122, 44]
+              else if (val < 0) data.cell.styles.textColor = [220, 50, 50]
+            }
+            if (data.section === 'foot' && data.column.index === 4) {
+              const val = parseFloat(data.cell.raw as string)
+              data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 12
+
+        for (const day of rangeReport.days) {
+          if (day.revenue === 0 && day.purchases === 0) continue
+          if (yPos > 230) { doc.addPage(); yPos = 20 }
+
+          doc.setFont('helvetica', 'bold')
+          doc.setFontSize(12)
+          doc.setTextColor(44, 36, 25)
+          doc.text(day.label, 14, yPos)
+          yPos += 4
+
+          if (day.products.length > 0) {
+            autoTable(doc, {
+              startY: yPos,
+              head: [['Produit', 'Quantite', 'Revenue (DA)', 'Profit (DA)']],
+              body: day.products.map(p => [p.name, p.quantity.toString(), p.revenue.toFixed(2), p.profit.toFixed(2)]),
+              theme: 'grid',
+              headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+              styles: { fontSize: 8, cellPadding: 3 },
+              columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 28, halign: 'right' }, 3: { cellWidth: 28, halign: 'right' } },
+              didParseCell: function(data: any) {
+                if (data.column.index === 3 && data.section === 'body') {
+                  const val = parseFloat(data.cell.raw as string)
+                  if (val > 0) data.cell.styles.textColor = [44, 122, 44]
+                  else if (val < 0) data.cell.styles.textColor = [220, 50, 50]
+                }
+              },
+            })
+            yPos = (doc as any).lastAutoTable.finalY + 6
+          }
+        }
+
+        if (yPos > 250) { doc.addPage(); yPos = 20 }
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Stock Actuel', 14, yPos)
+        yPos += 4
+
+        if (rangeReport.stock.length > 0) {
+          autoTable(doc, {
+            startY: yPos,
+            head: [['Produit', 'Stock', 'Unite']],
+            body: rangeReport.stock.map(s => [s.name, s.stock.toString(), s.unit]),
+            theme: 'grid',
+            headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            styles: { fontSize: 9, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 25, halign: 'center' } },
+          })
+          yPos = (doc as any).lastAutoTable.finalY + 10
+        }
+
+        if (yPos > 250) { doc.addPage(); yPos = 20 }
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Resume Financier', 14, yPos)
+        yPos += 8
+
+        autoTable(doc, {
+          startY: yPos,
+          body: [
+            ['Chiffre d\'affaires (CA)', `${rangeReport.totalRevenue.toFixed(2)} DA`],
+            ['Consommation', `${rangeReport.totalConsumption.toFixed(2)} DA`],
+            ['Total Achats', `${rangeReport.totalPurchases.toFixed(2)} DA`],
+            ['Total Profit', `${rangeReport.totalProfit.toFixed(2)} DA`],
+          ],
+          theme: 'grid',
+          styles: { fontSize: 10, cellPadding: 5 },
+          columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
+          didParseCell: function(data: any) {
+            if (data.row.index === 3) {
+              const val = parseFloat(data.cell.raw as string)
+              if (data.column.index === 1) {
+                data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
+                data.cell.styles.fontSize = 12
+              }
+              if (!data.row.styles) data.row.styles = {}
+              data.row.styles.fillColor = [245, 233, 218]
+            }
+          },
+        })
+      }
+
+      const filename = period === 'daily'
+        ? `rapport-${now.toISOString().split('T')[0]}.pdf`
+        : `rapport-${period}-${rangeStart.toISOString().split('T')[0]}-a-${rangeEnd.toISOString().split('T')[0]}.pdf`
+      doc.save(filename)
+    } catch (err) {
+      console.error('PDF export error:', err)
+    } finally {
+      setIsExportingPdf(false)
+    }
+  }
 
   if (isLoading || !data) {
     return (
@@ -268,8 +576,12 @@ export default function ReportsPage() {
       <div className="bg-white rounded-2xl p-6 border border-[#E8D5C4]/50 card-shadow">
         <h2 className="font-serif text-lg font-bold text-[#2C2419] mb-4">Exportation</h2>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20">
-            <IconFactory name="Download" size={16} /> Exporter PDF
+          <button
+            onClick={exportPdf}
+            disabled={isExportingPdf || (period === 'daily' && !dailyReport) || (period !== 'daily' && !rangeReport)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <IconFactory name="Download" size={16} /> {isExportingPdf ? 'Generation...' : 'Exporter PDF'}
           </button>
           <button className="flex items-center gap-2 px-5 py-2.5 border border-[#E8D5C4] text-[#6B4F3A] rounded-xl text-sm font-medium hover:bg-[#FAF3EB] transition-all">
             <IconFactory name="Download" size={16} /> Exporter Excel

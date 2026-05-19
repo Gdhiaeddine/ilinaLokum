@@ -169,6 +169,201 @@ export async function getReportsData(period: 'daily' | 'weekly' | 'monthly') {
   };
 }
 
+export async function getDailyReportData() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  const { data: sales } = await supabase
+    .from("sales")
+    .select("*, sale_items(*, products(name))")
+    .eq("user_id", user.id)
+    .gte("date", todayStart.toISOString())
+    .lte("date", todayEnd.toISOString());
+
+  const { data: purchases } = await supabase
+    .from("purchase_orders")
+    .select("*, purchase_items(*, products(name)), suppliers(name)")
+    .eq("user_id", user.id)
+    .gte("date", todayStart.toISOString())
+    .lte("date", todayEnd.toISOString());
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, current_stock, min_stock, unit, selling_price, production_cost")
+    .eq("user_id", user.id);
+
+  const salesList = sales ?? [];
+  const purchasesList = purchases ?? [];
+  const productsList = products ?? [];
+
+  let totalRevenue = 0;
+  let totalConsumption = 0;
+  let totalProfit = 0;
+  const productSalesMap: Record<string, { name: string; quantity: number; revenue: number; profit: number; consumption: number }> = {};
+
+  for (const sale of salesList) {
+    totalRevenue += Number(sale.total_amount) || 0;
+    for (const item of sale.sale_items ?? []) {
+      const itemRevenue = Number(item.unit_price) * Number(item.quantity);
+      const itemCost = Number(item.cost_price) * Number(item.quantity);
+      totalConsumption += itemCost;
+      totalProfit += itemRevenue - itemCost;
+      const pid = item.product_id;
+      if (!productSalesMap[pid]) {
+        productSalesMap[pid] = { name: item.products?.name || "Inconnu", quantity: 0, revenue: 0, profit: 0, consumption: 0 };
+      }
+      productSalesMap[pid].quantity += Number(item.quantity);
+      productSalesMap[pid].revenue += itemRevenue;
+      productSalesMap[pid].profit += itemRevenue - itemCost;
+      productSalesMap[pid].consumption += itemCost;
+    }
+  }
+
+  return {
+    date: todayStart.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+    purchases: purchasesList.map(p => ({
+      supplier: p.suppliers?.name || '-',
+      items: p.purchase_items?.map((pi: any) => `${pi.products?.name || '?'} (${pi.quantity})`).join(', ') || '-',
+      total: Number(p.total_amount),
+    })),
+    totalPurchases: purchasesList.reduce((acc, p) => acc + Number(p.total_amount), 0),
+    products: Object.values(productSalesMap),
+    stock: productsList.map(p => ({
+      name: p.name,
+      stock: Number(p.current_stock),
+      unit: p.unit,
+    })),
+    totalRevenue,
+    totalConsumption,
+    totalProfit,
+  };
+}
+
+export async function getRangeReportData(startDateStr: string, endDateStr: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const startDate = new Date(startDateStr);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(endDateStr);
+  endDate.setHours(23, 59, 59, 999);
+
+  const { data: sales } = await supabase
+    .from("sales")
+    .select("*, sale_items(*, products(name))")
+    .eq("user_id", user.id)
+    .gte("date", startDate.toISOString())
+    .lte("date", endDate.toISOString())
+    .order("date", { ascending: true });
+
+  const { data: purchases } = await supabase
+    .from("purchase_orders")
+    .select("*, purchase_items(*, products(name)), suppliers(name)")
+    .eq("user_id", user.id)
+    .gte("date", startDate.toISOString())
+    .lte("date", endDate.toISOString())
+    .order("date", { ascending: true });
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, current_stock, min_stock, unit, selling_price, production_cost")
+    .eq("user_id", user.id);
+
+  const salesList = sales ?? [];
+  const purchasesList = purchases ?? [];
+  const productsList = products ?? [];
+
+  const days: { date: string; label: string; revenue: number; consumption: number; profit: number; purchases: number; products: { name: string; quantity: number; revenue: number; consumption: number; profit: number }[] }[] = [];
+
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dayStr = current.toISOString().split('T')[0];
+    const label = current.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
+    const dayStart = new Date(current);
+    const dayEnd = new Date(current);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const daySales = salesList.filter(s => { const sd = new Date(s.date); return sd >= dayStart && sd <= dayEnd; });
+    const dayPurchases = purchasesList.filter(p => { const pd = new Date(p.date); return pd >= dayStart && pd <= dayEnd; });
+
+    let revenue = 0, consumption = 0, profit = 0;
+    const productMap: Record<string, { name: string; quantity: number; revenue: number; consumption: number; profit: number }> = {};
+
+    for (const sale of daySales) {
+      revenue += Number(sale.total_amount) || 0;
+      for (const item of sale.sale_items ?? []) {
+        const itemRevenue = Number(item.unit_price) * Number(item.quantity);
+        const itemCost = Number(item.cost_price) * Number(item.quantity);
+        consumption += itemCost;
+        profit += itemRevenue - itemCost;
+        const pid = item.product_id;
+        if (!productMap[pid]) {
+          productMap[pid] = { name: item.products?.name || "Inconnu", quantity: 0, revenue: 0, consumption: 0, profit: 0 };
+        }
+        productMap[pid].quantity += Number(item.quantity);
+        productMap[pid].revenue += itemRevenue;
+        productMap[pid].consumption += itemCost;
+        productMap[pid].profit += itemRevenue - itemCost;
+      }
+    }
+
+    const dayPurchaseTotal = dayPurchases.reduce((acc, p) => acc + Number(p.total_amount), 0);
+
+    days.push({
+      date: dayStr,
+      label,
+      revenue,
+      consumption,
+      profit,
+      purchases: dayPurchaseTotal,
+      products: Object.values(productMap),
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  let totalRevenue = 0, totalConsumption = 0, totalProfit = 0, totalPurchases = 0;
+  const allProductsMap: Record<string, { name: string; quantity: number; revenue: number; consumption: number; profit: number }> = {};
+
+  for (const sale of salesList) {
+    totalRevenue += Number(sale.total_amount) || 0;
+    for (const item of sale.sale_items ?? []) {
+      const itemRevenue = Number(item.unit_price) * Number(item.quantity);
+      const itemCost = Number(item.cost_price) * Number(item.quantity);
+      totalConsumption += itemCost;
+      totalProfit += itemRevenue - itemCost;
+      const pid = item.product_id;
+      if (!allProductsMap[pid]) {
+        allProductsMap[pid] = { name: item.products?.name || "Inconnu", quantity: 0, revenue: 0, consumption: 0, profit: 0 };
+      }
+      allProductsMap[pid].quantity += Number(item.quantity);
+      allProductsMap[pid].revenue += itemRevenue;
+      allProductsMap[pid].consumption += itemCost;
+      allProductsMap[pid].profit += itemRevenue - itemCost;
+    }
+  }
+
+  for (const p of purchasesList) {
+    totalPurchases += Number(p.total_amount) || 0;
+  }
+
+  return {
+    days,
+    totalRevenue,
+    totalConsumption,
+    totalProfit,
+    totalPurchases,
+    products: Object.values(allProductsMap),
+    stock: productsList.map(p => ({ name: p.name, stock: Number(p.current_stock), unit: p.unit })),
+  };
+}
+
 export async function getDashboardData() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -5,8 +5,6 @@ import { toast } from 'sonner'
 
 export default function SettingsPage() {
   const [storeName, setStoreName] = useState('Kunafa Boutique')
-  const [currency, setCurrency] = useState('DZD')
-  const [language, setLanguage] = useState('fr')
 
   function handleSave() {
     toast.success('Parametres sauvegardes')
@@ -35,22 +33,9 @@ export default function SettingsPage() {
         <div>
           <h2 className="font-serif text-lg font-bold text-[#2C2419] mb-4">Preferences</h2>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-[#2C2419] mb-1">Devise</label>
-                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full px-4 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30">
-                  <option value="DZD">DZD (Dinar Algerien)</option>
-                  <option value="EUR">EUR (Euro)</option>
-                  <option value="USD">USD (Dollar)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#2C2419] mb-1">Langue</label>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full px-4 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30">
-                  <option value="fr">Francais</option>
-                  <option value="ar">Arabe</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-[#2C2419] mb-1">Devise</label>
+              <input value="DZD (Dinar Algerien)" disabled className="w-full px-4 py-2.5 bg-gray-100 border border-[#E8D5C4] rounded-xl text-sm text-[#6B4F3A] cursor-not-allowed" />
             </div>
           </div>
         </div>

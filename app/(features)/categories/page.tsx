@@ -5,12 +5,14 @@ import { IconFactory } from '@/shared/icon-factory'
 import { getCategories, addCategory, updateCategory, deleteCategory } from '@/app/actions/categories'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 
 export default function CategoriesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [formData, setFormData] = useState({ name: '' })
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
 
   const queryClient = useQueryClient()
 
@@ -144,7 +146,7 @@ export default function CategoriesPage() {
                       <button onClick={() => openEdit(category)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
                         <IconFactory name="Edit" size={16} />
                       </button>
-                      <button onClick={() => deleteMutation.mutate(category.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => setDeleteConfirm({ isOpen: true, id: category.id })} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <IconFactory name="Delete" size={16} />
                       </button>
                     </div>
@@ -162,6 +164,17 @@ export default function CategoriesPage() {
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Supprimer la categorie"
+        message="Cette action est irreversible. Voulez-vous continuer ?"
+        onConfirm={() => {
+          if (deleteConfirm.id) deleteMutation.mutate(deleteConfirm.id)
+          setDeleteConfirm({ isOpen: false, id: null })
+        }}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">

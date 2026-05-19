@@ -6,6 +6,7 @@ import { createSale, getSalesByDate, deleteSale, updateSale } from '@/app/action
 import { getProducts } from '@/app/actions/products'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 
 interface ProductRow {
   id: string
@@ -24,6 +25,7 @@ export default function SalesPage() {
   const [rows, setRows] = useState<ProductRow[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
 
   const queryClient = useQueryClient()
 
@@ -183,7 +185,7 @@ export default function SalesPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
           <IconFactory name="Calendar" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" />
           <input
@@ -199,7 +201,7 @@ export default function SalesPage() {
       {isEditing ? (
         <>
           <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-[#FAF3EB]">
                   <tr>
@@ -260,6 +262,56 @@ export default function SalesPage() {
                 </tbody>
               </table>
             </div>
+            <div className="md:hidden divide-y divide-[#E8D5C4]/50">
+              {rows.map((row, index) => {
+                const lineProfit = (row.salePrice - row.costPrice) * row.quantity
+                return (
+                  <div key={row.id} className={`p-4 space-y-3 ${row.quantity > 0 ? 'bg-[#F5E9DA]/30' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-[#2C2419]">{row.name}</span>
+                      <span className={`text-sm font-semibold ${lineProfit > 0 ? 'text-green-600' : lineProfit < 0 ? 'text-red-500' : 'text-[#8C735A]'}`}>
+                        {lineProfit > 0 ? '+' : ''}{lineProfit.toFixed(2)} DA
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[#8C735A]">
+                      <span>Stock: {row.stock}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-[#6B4F3A] mb-1">Prix d&apos;achat</label>
+                        <input
+                          type="number"
+                          value={row.costPrice}
+                          onChange={(e) => updateRow(index, 'costPrice', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 bg-white border border-[#E8D5C4] rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#6B4F3A] mb-1">Prix de vente</label>
+                        <input
+                          type="number"
+                          value={row.salePrice}
+                          onChange={(e) => updateRow(index, 'salePrice', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 bg-white border border-[#E8D5C4] rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#6B4F3A] mb-1">Quantite</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={row.stock}
+                          value={row.quantity || ''}
+                          onChange={(e) => updateRow(index, 'quantity', Number(e.target.value))}
+                          placeholder="0"
+                          className="w-full px-2 py-1.5 bg-white border border-[#E8D5C4] rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {stats.soldItems > 0 && (
@@ -298,7 +350,7 @@ export default function SalesPage() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => { setRows([]); setIsEditing(false); setEditingSaleId(null) }}
               className="flex-1 py-3 border border-[#E8D5C4] text-[#6B4F3A] rounded-xl text-sm font-medium hover:bg-[#FAF3EB] transition-all"
@@ -384,10 +436,10 @@ export default function SalesPage() {
               )}
 
               <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#E8D5C4]/50">
+                <div className="px-4 md:px-6 py-4 border-b border-[#E8D5C4]/50">
                   <h2 className="font-serif text-lg font-bold text-[#2C2419]">Historique du jour</h2>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-[#FAF3EB]">
                       <tr>
@@ -429,7 +481,7 @@ export default function SalesPage() {
                                 <button onClick={() => startEditSale(sale)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
                                   <IconFactory name="Edit" size={16} />
                                 </button>
-                                <button onClick={() => deleteMutation.mutate(sale.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <button onClick={() => setDeleteConfirm({ isOpen: true, id: sale.id })} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                   <IconFactory name="Delete" size={16} />
                                 </button>
                               </div>
@@ -440,11 +492,57 @@ export default function SalesPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="md:hidden divide-y divide-[#E8D5C4]/50">
+                  {daySales.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-[#8C735A]">
+                      <IconFactory name="ShoppingCart" size={32} className="mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">Aucune vente pour cette date</p>
+                    </div>
+                  ) : (
+                    daySales.map((sale: any) => (
+                      <div key={sale.id} className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
+                              <IconFactory name="ShoppingCart" className="text-white" size={14} />
+                            </div>
+                            <span className="text-sm text-[#2C2419] font-medium">
+                              {sale.sale_items?.length || 0} article(s)
+                            </span>
+                          </div>
+                          <span className="font-bold text-[#2C2419]">{Number(sale.total_amount).toFixed(2)} DA</span>
+                        </div>
+                        <div className="text-xs text-[#8C735A] mb-3">
+                          {sale.sale_items?.reduce((acc: number, item: any) => acc + Number(item.quantity), 0) || 0} article(s) vendu(s)
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => startEditSale(sale)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
+                            <IconFactory name="Edit" size={14} /> Modifier
+                          </button>
+                          <button onClick={() => setDeleteConfirm({ isOpen: true, id: sale.id })} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <IconFactory name="Delete" size={14} /> Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </>
           )}
         </>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Supprimer la vente"
+        message="Cette action est irreversible. Voulez-vous continuer ?"
+        onConfirm={() => {
+          if (deleteConfirm.id) deleteMutation.mutate(deleteConfirm.id)
+          setDeleteConfirm({ isOpen: false, id: null })
+        }}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
     </div>
   )
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/services/supabase/client";
 import { IconFactory } from "@/shared/icon-factory";
@@ -122,13 +121,6 @@ export default function LoginPage() {
               {loading ? "Connexion..." : "Se connecter"}
             </button>
           </form>
-
-          <p className="mt-8 text-center text-sm text-[#8C735A]">
-            Pas encore de compte ?{" "}
-            <Link href="/register" className="text-[#C9A227] font-medium hover:underline">
-              Créer un compte
-            </Link>
-          </p>
         </div>
       </div>
     </div>

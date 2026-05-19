@@ -5,12 +5,14 @@ import { IconFactory } from '@/shared/icon-factory'
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '@/app/actions/suppliers'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 
 export default function SuppliersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [formData, setFormData] = useState({ name: '', phone: '', address: '', email: '', notes: '' })
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
 
   const queryClient = useQueryClient()
 
@@ -124,7 +126,7 @@ export default function SuppliersPage() {
       </div>
 
       {filteredSuppliers.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-8 text-center">
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-6 md:p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F5E9DA] flex items-center justify-center">
             <IconFactory name="Suppliers" size={24} className="text-[#C9A227]" />
           </div>
@@ -142,7 +144,7 @@ export default function SuppliersPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-[#FAF3EB]">
                 <tr>
@@ -172,7 +174,7 @@ export default function SuppliersPage() {
                         <button onClick={() => openEdit(supplier)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
                           <IconFactory name="Edit" size={16} />
                         </button>
-                        <button onClick={() => deleteMutation.mutate(supplier.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <button onClick={() => setDeleteConfirm({ isOpen: true, id: supplier.id })} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                           <IconFactory name="Delete" size={16} />
                         </button>
                       </div>
@@ -182,13 +184,71 @@ export default function SuppliersPage() {
               </tbody>
             </table>
           </div>
+          <div className="md:hidden divide-y divide-[#E8D5C4]/50">
+            {filteredSuppliers.map((supplier: any) => (
+              <div key={supplier.id} className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center flex-shrink-0">
+                      <IconFactory name="Suppliers" className="text-white" size={18} />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-[#2C2419] text-sm block">{supplier.name}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(supplier)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-lg transition-colors">
+                      <IconFactory name="Edit" size={16} />
+                    </button>
+                    <button onClick={() => setDeleteConfirm({ isOpen: true, id: supplier.id })} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <IconFactory name="Delete" size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2 ml-13">
+                  {supplier.phone && (
+                    <div className="flex items-center gap-2 text-sm text-[#6B4F3A]">
+                      <IconFactory name="Phone" size={14} className="text-[#8C735A] flex-shrink-0" />
+                      <span>{supplier.phone}</span>
+                    </div>
+                  )}
+                  {supplier.email && (
+                    <div className="flex items-center gap-2 text-sm text-[#6B4F3A]">
+                      <IconFactory name="Mail" size={14} className="text-[#8C735A] flex-shrink-0" />
+                      <span className="truncate">{supplier.email}</span>
+                    </div>
+                  )}
+                  {supplier.address && (
+                    <div className="flex items-center gap-2 text-sm text-[#6B4F3A]">
+                      <IconFactory name="MapPin" size={14} className="text-[#8C735A] flex-shrink-0" />
+                      <span className="truncate">{supplier.address}</span>
+                    </div>
+                  )}
+                  {!supplier.phone && !supplier.email && !supplier.address && (
+                    <span className="text-xs text-[#8C735A]">Aucune information</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Supprimer le fournisseur"
+        message="Cette action est irreversible. Voulez-vous continuer ?"
+        onConfirm={() => {
+          if (deleteConfirm.id) deleteMutation.mutate(deleteConfirm.id)
+          setDeleteConfirm({ isOpen: false, id: null })
+        }}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
 
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-white rounded-2xl p-4 md:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="font-serif text-xl font-bold text-[#2C2419] mb-1">{editingId ? 'Modifier' : 'Ajouter'} un fournisseur</h2>
             <p className="text-sm text-[#8C735A] mb-6">Remplissez les informations du fournisseur</p>
             <form onSubmit={handleSubmit} className="space-y-4">

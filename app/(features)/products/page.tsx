@@ -6,11 +6,13 @@ import { getProducts, addProduct, updateProduct, deleteProduct } from '@/app/act
 import { getCategories } from '@/app/actions/categories'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 
 export default function ProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
   const [formData, setFormData] = useState({
     name: '',
     category_id: '',
@@ -150,7 +152,7 @@ export default function ProductsPage() {
                 </div>
                 <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEdit(product)} className="p-1.5 bg-white/80 backdrop-blur rounded-lg text-[#6B4F3A] hover:text-[#C9A227] transition-colors"><IconFactory name="Edit" size={14} /></button>
-                  <button onClick={() => deleteMutation.mutate(product.id)} className="p-1.5 bg-white/80 backdrop-blur rounded-lg text-red-400 hover:text-red-600 transition-colors"><IconFactory name="Delete" size={14} /></button>
+                  <button onClick={() => setDeleteConfirm({ isOpen: true, id: product.id })} className="p-1.5 bg-white/80 backdrop-blur rounded-lg text-red-400 hover:text-red-600 transition-colors"><IconFactory name="Delete" size={14} /></button>
                 </div>
                 {isLow && (
                   <span className="absolute top-3 left-3 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Stock Faible</span>
@@ -245,6 +247,17 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Supprimer le produit"
+        message="Cette action est irreversible. Voulez-vous continuer ?"
+        onConfirm={() => {
+          if (deleteConfirm.id) deleteMutation.mutate(deleteConfirm.id)
+          setDeleteConfirm({ isOpen: false, id: null })
+        }}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
     </div>
   )
 }

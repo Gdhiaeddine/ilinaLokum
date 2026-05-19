@@ -7,6 +7,7 @@ import { IconFactory } from "@/shared/icon-factory";
 import { cn } from "@/shared/utils/cn";
 import { createClient } from "@/services/supabase/client";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "Dashboard" as const },
@@ -35,7 +36,7 @@ export function MobileSidebar() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="lg:hidden p-2 text-[#6B4F3A] hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-xl transition-all"
+        className="lg:hidden p-2 text-brown hover:text-[#C9A227] hover:bg-[#F5E9DA] rounded-xl transition-all"
       >
         <IconFactory name="Menu" size={24} />
       </button>
@@ -46,10 +47,17 @@ export function MobileSidebar() {
           <div className="absolute left-0 top-0 bottom-0 w-72 bg-[#FAF3EB] border-r border-[#E8D5C4] flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-[#E8D5C4]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
-                  <IconFactory name="Store" className="text-white" size={20} />
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center flex-shrink-0">
+                  <Image
+                    src="/logo.png"
+                    width={20}
+                    height={20}
+                    alt="Ilina Lokum"
+                  />
                 </div>
-                <span className="font-serif text-lg font-semibold text-[#2C2419]">Kunafa</span>
+                <span className="font-serif text-lg font-semibold text-[#2C2419]">
+                  Ilina Lokum
+                </span>
               </div>
               <button onClick={() => setIsOpen(false)} className="p-2 text-[#6B4F3A] hover:text-[#C9A227] rounded-lg">
                 <IconFactory name="Close" size={20} />
