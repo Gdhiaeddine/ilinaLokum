@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/services/supabase/client";
 import { IconFactory } from "@/shared/icon-factory";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -34,21 +35,27 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#FFFDF9]">
+    <div className="min-h-screen flex bg-background">
       {/* Left side - Visual */}
-      <div className="hidden lg:flex w-1/2 bg-gradient-to-br from-[#FAF3EB] via-[#F5E9DA] to-[#E8D5C4] items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C9A227' fill-opacity='0.3'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }} />
+      <div className="hidden lg:flex w-1/2 relative items-center justify-center overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: 'url(/background.jpg)' }}
+        />
+        <div className="absolute inset-0 bg-[#2C2419]/40 backdrop-blur-xs" />
         <div className="text-center relative z-10 p-12">
-          <div className="w-24 h-24 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center shadow-2xl shadow-[#C9A227]/20">
-            <IconFactory name="Store" className="text-white" size={40} />
+          <div className="w-32 h-32 mx-auto mb-8 rounded-2xl flex items-center justify-center">
+            {
+              //<IconFactory name="Store" className="text-white" size={20} />
+            }
+            <Image src="/logo.png" width={200} height={200} alt="Ilina Lokum" />
           </div>
-          <h1 className="font-serif text-4xl font-bold text-[#2C2419] mb-4">
-            Kunafa Manager
+          <h1 className="font-serif text-4xl font-bold text-white mb-4">
+            Ilina Lokum Manager
           </h1>
-          <p className="text-[#6B4F3A] text-lg max-w-md mx-auto leading-relaxed">
-            Gestion premium de votre boutique de Kunafa. Suivez vos stocks, vos ventes et vos profits en temps réel.
+          <p className="text-[#eee] text-lg max-w-md mx-auto leading-relaxed">
+            Gestion premium de votre boutique de Kunafa. Suivez vos stocks, vos
+            ventes et vos profits en temps réel.
           </p>
         </div>
       </div>
@@ -60,7 +67,9 @@ export default function LoginPage() {
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
               <IconFactory name="Store" className="text-white" size={28} />
             </div>
-            <h1 className="font-serif text-2xl font-bold text-[#2C2419]">Kunafa Manager</h1>
+            <h1 className="font-serif text-2xl font-bold text-[#2C2419]">
+              Kunafa Manager
+            </h1>
           </div>
 
           <div className="mb-8">
@@ -84,7 +93,11 @@ export default function LoginPage() {
                 Email
               </label>
               <div className="relative">
-                <IconFactory name="Mail" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" size={18} />
+                <IconFactory
+                  name="Mail"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]"
+                  size={18}
+                />
                 <input
                   type="email"
                   value={email}
@@ -101,7 +114,11 @@ export default function LoginPage() {
                 Mot de passe
               </label>
               <div className="relative">
-                <IconFactory name="Lock" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" size={18} />
+                <IconFactory
+                  name="Lock"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]"
+                  size={18}
+                />
                 <input
                   type="password"
                   value={password}
