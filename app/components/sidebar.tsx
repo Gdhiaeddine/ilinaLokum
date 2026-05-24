@@ -15,6 +15,7 @@ const navItems = [
   { href: "/products", label: "Produits", icon: "Products" as const },
   { href: "/categories", label: "Catégories", icon: "Categories" as const },
   { href: "/suppliers", label: "Fournisseurs", icon: "Suppliers" as const },
+  { href: "/expenses", label: "Depenses", icon: "DollarSign" as const },
   { href: "/reports", label: "Rapports", icon: "Reports" as const },
   { href: "/settings", label: "Paramètres", icon: "Settings" as const },
 ];

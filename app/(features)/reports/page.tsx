@@ -11,13 +11,27 @@ import autoTable from 'jspdf-autotable'
 const COLORS = ['#D4AF37', '#C9A227', '#A67C00', '#8C735A', '#6B4F3A']
 
 export default function ReportsPage() {
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+  const [appliedStart, setAppliedStart] = useState('')
+  const [appliedEnd, setAppliedEnd] = useState('')
   const [isExportingPdf, setIsExportingPdf] = useState(false)
 
-  const periodLabels = {
+  const customApplied = appliedStart !== '' && appliedEnd !== ''
+
+  const periodLabels: Record<string, string> = {
     daily: `Aujourd'hui`,
     weekly: `Cette semaine`,
     monthly: `Ce mois`,
+    custom: customApplied ? `${new Date(appliedStart).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} - ${new Date(appliedEnd).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'Intervalle',
+  }
+
+  function applyCustomRange() {
+    if (customStart && customEnd) {
+      setAppliedStart(customStart)
+      setAppliedEnd(customEnd)
+    }
   }
 
   const now = new Date()
@@ -27,8 +41,9 @@ export default function ReportsPage() {
   const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + 6)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['reports', period],
-    queryFn: () => getReportsData(period),
+    queryKey: ['reports', period, appliedStart, appliedEnd],
+    queryFn: () => getReportsData(period, appliedStart, appliedEnd),
+    enabled: period !== 'custom' || customApplied,
   })
 
   const { data: dailyReport } = useQuery({
@@ -44,17 +59,21 @@ export default function ReportsPage() {
     ? new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + mondayOffset2)
     : period === 'monthly'
     ? new Date(now2.getFullYear(), now2.getMonth(), 1)
+    : period === 'custom' && customApplied
+    ? new Date(appliedStart)
     : now2
   const rangeEnd = period === 'weekly'
     ? new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + mondayOffset2 + 6)
     : period === 'monthly'
     ? new Date(now2.getFullYear(), now2.getMonth() + 1, 0)
+    : period === 'custom' && customApplied
+    ? new Date(appliedEnd)
     : now2
 
   const { data: rangeReport } = useQuery({
-    queryKey: ['range-report', period],
+    queryKey: ['range-report', period, appliedStart, appliedEnd],
     queryFn: () => getRangeReportData(rangeStart.toISOString(), rangeEnd.toISOString()),
-    enabled: period !== 'daily',
+    enabled: period !== 'daily' && (period !== 'custom' || customApplied),
   })
 
   const chartData = useMemo(() => {
@@ -147,23 +166,33 @@ export default function ReportsPage() {
           yPos += 15
         }
 
+        if (yPos > 250) { doc.addPage(); yPos = 20 }
+
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(14)
         doc.setTextColor(44, 36, 25)
-        doc.text('Stock Actuel', 14, yPos)
+        doc.text('Depenses', 14, yPos)
         yPos += 4
 
-        if (dailyReport.stock.length > 0) {
+        if (dailyReport.expenses.length > 0) {
           autoTable(doc, {
             startY: yPos,
-            head: [['Produit', 'Stock', 'Unite']],
-            body: dailyReport.stock.map(s => [s.name, s.stock.toString(), s.unit]),
+            head: [['Description', 'Montant (DA)']],
+            body: dailyReport.expenses.map(e => [e.description, e.amount.toFixed(2)]),
+            foot: [['Total', dailyReport.totalExpenses.toFixed(2) + ' DA']],
             theme: 'grid',
             headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
             styles: { fontSize: 9, cellPadding: 4 },
-            columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 25, halign: 'center' } },
+            columnStyles: { 0: { cellWidth: 120 }, 1: { cellWidth: 35, halign: 'right' } },
           })
           yPos = (doc as any).lastAutoTable.finalY + 10
+        } else {
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(10)
+          doc.setTextColor(140, 115, 90)
+          doc.text('Aucune depense aujourd\'hui', 14, yPos + 5)
+          yPos += 15
         }
 
         if (yPos > 250) { doc.addPage(); yPos = 20 }
@@ -174,19 +203,29 @@ export default function ReportsPage() {
         doc.text('Resume Financier', 14, yPos)
         yPos += 8
 
+        const dailyTotalCharges = dailyReport.totalConsumption + dailyReport.totalExpenses + dailyReport.totalPurchases
         autoTable(doc, {
           startY: yPos,
           body: [
             ['Chiffre d\'affaires (CA)', `${dailyReport.totalRevenue.toFixed(2)} DA`],
             ['Consommation', `${dailyReport.totalConsumption.toFixed(2)} DA`],
+            ['Depenses', `${dailyReport.totalExpenses.toFixed(2)} DA`],
             ['Total Achats', `${dailyReport.totalPurchases.toFixed(2)} DA`],
+            ['Total charges nettes', `${dailyTotalCharges.toFixed(2)} DA`],
             ['Total Profit', `${dailyReport.totalProfit.toFixed(2)} DA`],
           ],
           theme: 'grid',
           styles: { fontSize: 10, cellPadding: 5 },
           columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
           didParseCell: function(data: any) {
-            if (data.row.index === 3) {
+            if (data.row.index === 4) {
+              if (data.column.index === 1) {
+                data.cell.styles.textColor = [220, 50, 50]
+              }
+              if (!data.row.styles) data.row.styles = {}
+              data.row.styles.fillColor = [245, 233, 218]
+            }
+            if (data.row.index === 5) {
               const val = parseFloat(data.cell.raw as string)
               if (data.column.index === 1) {
                 data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
@@ -199,7 +238,7 @@ export default function ReportsPage() {
         })
       } else {
         if (!rangeReport) return
-        const periodTitle = period === 'weekly' ? 'Rapport Hebdomadaire' : 'Rapport Mensuel'
+        const periodTitle = period === 'weekly' ? 'Rapport Hebdomadaire' : period === 'monthly' ? 'Rapport Mensuel' : 'Rapport Personnalise'
         const dateRange = `${rangeStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} - ${rangeEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`
 
         doc.setFont('helvetica', 'bold')
@@ -286,20 +325,28 @@ export default function ReportsPage() {
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(14)
         doc.setTextColor(44, 36, 25)
-        doc.text('Stock Actuel', 14, yPos)
+        doc.text('Depenses', 14, yPos)
         yPos += 4
 
-        if (rangeReport.stock.length > 0) {
+        if (rangeReport.expenses.length > 0) {
           autoTable(doc, {
             startY: yPos,
-            head: [['Produit', 'Stock', 'Unite']],
-            body: rangeReport.stock.map(s => [s.name, s.stock.toString(), s.unit]),
+            head: [['Date', 'Description', 'Montant (DA)']],
+            body: rangeReport.expenses.map(e => [e.date, e.description, e.amount.toFixed(2)]),
+            foot: [['', 'Total', rangeReport.totalExpenses.toFixed(2) + ' DA']],
             theme: 'grid',
             headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+            footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
             styles: { fontSize: 9, cellPadding: 4 },
-            columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 25, halign: 'center' } },
+            columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 90 }, 2: { cellWidth: 35, halign: 'right' } },
           })
           yPos = (doc as any).lastAutoTable.finalY + 10
+        } else {
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(10)
+          doc.setTextColor(140, 115, 90)
+          doc.text('Aucune depense pour cette periode', 14, yPos + 5)
+          yPos += 15
         }
 
         if (yPos > 250) { doc.addPage(); yPos = 20 }
@@ -310,19 +357,29 @@ export default function ReportsPage() {
         doc.text('Resume Financier', 14, yPos)
         yPos += 8
 
+        const rangeTotalCharges = rangeReport.totalConsumption + rangeReport.totalExpenses + rangeReport.totalPurchases
         autoTable(doc, {
           startY: yPos,
           body: [
             ['Chiffre d\'affaires (CA)', `${rangeReport.totalRevenue.toFixed(2)} DA`],
             ['Consommation', `${rangeReport.totalConsumption.toFixed(2)} DA`],
+            ['Depenses', `${rangeReport.totalExpenses.toFixed(2)} DA`],
             ['Total Achats', `${rangeReport.totalPurchases.toFixed(2)} DA`],
+            ['Total charges nettes', `${rangeTotalCharges.toFixed(2)} DA`],
             ['Total Profit', `${rangeReport.totalProfit.toFixed(2)} DA`],
           ],
           theme: 'grid',
           styles: { fontSize: 10, cellPadding: 5 },
           columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
           didParseCell: function(data: any) {
-            if (data.row.index === 3) {
+            if (data.row.index === 4) {
+              if (data.column.index === 1) {
+                data.cell.styles.textColor = [220, 50, 50]
+              }
+              if (!data.row.styles) data.row.styles = {}
+              data.row.styles.fillColor = [245, 233, 218]
+            }
+            if (data.row.index === 5) {
               const val = parseFloat(data.cell.raw as string)
               if (data.column.index === 1) {
                 data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
@@ -337,6 +394,8 @@ export default function ReportsPage() {
 
       const filename = period === 'daily'
         ? `rapport-${now.toISOString().split('T')[0]}.pdf`
+        : period === 'custom'
+        ? `rapport-${appliedStart}-a-${appliedEnd}.pdf`
         : `rapport-${period}-${rangeStart.toISOString().split('T')[0]}-a-${rangeEnd.toISOString().split('T')[0]}.pdf`
       doc.save(filename)
     } catch (err) {
@@ -344,6 +403,54 @@ export default function ReportsPage() {
     } finally {
       setIsExportingPdf(false)
     }
+  }
+
+  if (period === 'custom' && !customApplied) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-2xl font-bold text-[#2C2419]">Rapports</h1>
+            <p className="text-sm text-[#8C735A]">Selectionnez un intervalle de dates</p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2 p-1 bg-[#FAF3EB] rounded-xl">
+              {(['daily', 'weekly', 'monthly', 'custom'] as const).map((p) => (
+                <button key={p} onClick={() => { setPeriod(p); if (p !== 'custom') { setAppliedStart(''); setAppliedEnd('') } }} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p ? 'bg-white text-[#C9A227] shadow-sm' : 'text-[#6B4F3A] hover:text-[#2C2419]'}`}>
+                  {p === 'daily' ? 'Journalier' : p === 'weekly' ? 'Hebdomadaire' : p === 'monthly' ? 'Mensuel' : 'Intervalle'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="px-3 py-2 border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 focus:border-[#C9A227]"
+              />
+              <span className="text-sm text-[#8C735A]">au</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-3 py-2 border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 focus:border-[#C9A227]"
+              />
+              <button
+                onClick={applyCustomRange}
+                disabled={!customStart || !customEnd}
+                className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Appliquer
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-12 text-center">
+          <IconFactory name="Calendar" className="text-[#E8D5C4] mx-auto mb-4" size={48} />
+          <p className="text-[#8C735A] text-sm">Veuillez selectionner une date de debut et une date de fin, puis cliquer sur Appliquer</p>
+        </div>
+      </div>
+    )
   }
 
   if (isLoading || !data) {
@@ -377,16 +484,46 @@ export default function ReportsPage() {
               ? `Statistiques du ${now.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`
               : period === 'weekly'
               ? `Statistiques de la semaine du ${weekStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} au ${weekEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
-              : `Statistiques du mois de ${now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`
+              : period === 'monthly'
+              ? `Statistiques du mois de ${now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`
+              : customApplied
+              ? `Statistiques du ${new Date(appliedStart).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} au ${new Date(appliedEnd).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`
+              : 'Selectionnez un intervalle de dates'
             }
           </p>
         </div>
-        <div className="flex gap-2 p-1 bg-[#FAF3EB] rounded-xl">
-          {(['daily', 'weekly', 'monthly'] as const).map((p) => (
-            <button key={p} onClick={() => setPeriod(p)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p ? 'bg-white text-[#C9A227] shadow-sm' : 'text-[#6B4F3A] hover:text-[#2C2419]'}`}>
-              {p === 'daily' ? 'Journalier' : p === 'weekly' ? 'Hebdomadaire' : 'Mensuel'}
-            </button>
-          ))}
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2 p-1 bg-[#FAF3EB] rounded-xl">
+            {(['daily', 'weekly', 'monthly', 'custom'] as const).map((p) => (
+              <button key={p} onClick={() => { setPeriod(p); if (p !== 'custom') { setAppliedStart(''); setAppliedEnd('') } }} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p ? 'bg-white text-[#C9A227] shadow-sm' : 'text-[#6B4F3A] hover:text-[#2C2419]'}`}>
+                {p === 'daily' ? 'Journalier' : p === 'weekly' ? 'Hebdomadaire' : p === 'monthly' ? 'Mensuel' : 'Intervalle'}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="px-3 py-2 border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 focus:border-[#C9A227]"
+              />
+              <span className="text-sm text-[#8C735A]">au</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-3 py-2 border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] bg-white focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 focus:border-[#C9A227]"
+              />
+              <button
+                onClick={applyCustomRange}
+                disabled={!customStart || !customEnd}
+                className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Appliquer
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -528,6 +665,10 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between p-3 bg-[#FAF3EB] rounded-xl">
               <span className="text-sm text-[#6B4F3A]">Achats</span>
               <span className="font-bold text-red-500">-{data.totalPurchases.toFixed(2)} DA</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-[#F5E9DA] rounded-xl border border-[#E8D5C4]">
+              <span className="text-sm font-medium text-[#2C2419]">Total charges nettes</span>
+              <span className="font-bold text-red-600">-{(data.totalCost + data.totalExpenses + data.totalPurchases).toFixed(2)} DA</span>
             </div>
             <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#F5E9DA] to-[#FAF3EB] rounded-xl">
               <span className="font-medium text-[#2C2419]">Benefice net</span>

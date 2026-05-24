@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 export default function PurchasesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0])
   const [items, setItems] = useState([{ productId: '', quantity: 0, price: 0 }])
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
   const [filterDate, setFilterDate] = useState('')
@@ -35,6 +36,7 @@ export default function PurchasesPage() {
     mutationFn: async () => {
       const formData = new FormData()
       formData.append('supplier_id', supplierId)
+      formData.append('purchase_date', purchaseDate)
       const validItems = items.filter(i => i.productId && i.quantity > 0 && i.price > 0)
       if (!supplierId) throw new Error('Selectionnez un fournisseur')
       if (validItems.length === 0) throw new Error('Ajoutez au moins un article valide')
@@ -61,6 +63,7 @@ export default function PurchasesPage() {
 
   function resetForm() {
     setSupplierId('')
+    setPurchaseDate(new Date().toISOString().split('T')[0])
     setItems([{ productId: '', quantity: 0, price: 0 }])
   }
 
@@ -257,6 +260,16 @@ export default function PurchasesPage() {
             <p className="text-sm text-[#8C735A] mb-6">Enregistrez un achat de produits</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#2C2419] mb-1">Date d'achat</label>
+                <input
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+                  required
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-[#2C2419] mb-1">Fournisseur</label>
                 <select

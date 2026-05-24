@@ -3,7 +3,7 @@
 import { createClient } from "@/services/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function getReportsData(period: 'daily' | 'weekly' | 'monthly') {
+export async function getReportsData(period: 'daily' | 'weekly' | 'monthly' | 'custom', customStart?: string, customEnd?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -85,7 +85,7 @@ export async function getReportsData(period: 'daily' | 'weekly' | 'monthly') {
       }
       chartDataList.push({ label: dayNames[i], revenue, profit: revenue - cost, cost });
     }
-  } else {
+  } else if (period === 'monthly') {
     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     const periodSales = sales.filter(s => { const sd = new Date(s.date); return sd >= startDate && sd <= endDate; });
@@ -107,6 +107,71 @@ export async function getReportsData(period: 'daily' | 'weekly' | 'monthly') {
         }
       }
       chartDataList.push({ label: `S${w + 1}`, revenue, profit: revenue - cost, cost });
+    }
+  } else {
+    if (!customStart || !customEnd) return null;
+    startDate = new Date(customStart);
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(customEnd);
+    endDate.setHours(23, 59, 59, 999);
+    const periodSales = sales.filter(s => { const sd = new Date(s.date); return sd >= startDate && sd <= endDate; });
+
+    const diffDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (diffDays <= 1) {
+      for (let h = 0; h < 24; h++) {
+        const hStart = new Date(startDate);
+        hStart.setHours(h, 0, 0, 0);
+        const hEnd = new Date(startDate);
+        hEnd.setHours(h, 59, 59, 999);
+        const hourSales = periodSales.filter(s => { const sd = new Date(s.date); return sd >= hStart && sd <= hEnd; });
+        let revenue = 0, cost = 0;
+        for (const sale of hourSales) {
+          revenue += Number(sale.total_amount) || 0;
+          for (const item of sale.sale_items ?? []) {
+            cost += Number(item.cost_price) * Number(item.quantity);
+          }
+        }
+        chartDataList.push({ label: `${h.toString().padStart(2, '0')}h`, revenue, profit: revenue - cost, cost });
+      }
+    } else if (diffDays <= 31) {
+      const current = new Date(startDate);
+      while (current <= endDate) {
+        const dStart = new Date(current);
+        const dEnd = new Date(current);
+        dEnd.setHours(23, 59, 59, 999);
+        const daySales = periodSales.filter(s => { const sd = new Date(s.date); return sd >= dStart && sd <= dEnd; });
+        let revenue = 0, cost = 0;
+        for (const sale of daySales) {
+          revenue += Number(sale.total_amount) || 0;
+          for (const item of sale.sale_items ?? []) {
+            cost += Number(item.cost_price) * Number(item.quantity);
+          }
+        }
+        const label = current.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+        chartDataList.push({ label, revenue, profit: revenue - cost, cost });
+        current.setDate(current.getDate() + 1);
+      }
+    } else {
+      const current = new Date(startDate);
+      while (current <= endDate) {
+        const wStart = new Date(current);
+        const wEnd = new Date(current);
+        wEnd.setDate(wEnd.getDate() + 6);
+        if (wEnd > endDate) wEnd.setTime(endDate.getTime());
+        wEnd.setHours(23, 59, 59, 999);
+        const weekSales = periodSales.filter(s => { const sd = new Date(s.date); return sd >= wStart && sd <= wEnd; });
+        let revenue = 0, cost = 0;
+        for (const sale of weekSales) {
+          revenue += Number(sale.total_amount) || 0;
+          for (const item of sale.sale_items ?? []) {
+            cost += Number(item.cost_price) * Number(item.quantity);
+          }
+        }
+        const label = `${wStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} - ${wEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`;
+        chartDataList.push({ label, revenue, profit: revenue - cost, cost });
+        current.setDate(current.getDate() + 7);
+      }
     }
   }
 
@@ -197,9 +262,17 @@ export async function getDailyReportData() {
     .select("id, name, current_stock, min_stock, unit, selling_price, production_cost")
     .eq("user_id", user.id);
 
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("user_id", user.id)
+    .gte("date", todayStart.toISOString())
+    .lte("date", todayEnd.toISOString());
+
   const salesList = sales ?? [];
   const purchasesList = purchases ?? [];
   const productsList = products ?? [];
+  const expensesList = expenses ?? [];
 
   let totalRevenue = 0;
   let totalConsumption = 0;
@@ -232,6 +305,12 @@ export async function getDailyReportData() {
       total: Number(p.total_amount),
     })),
     totalPurchases: purchasesList.reduce((acc, p) => acc + Number(p.total_amount), 0),
+    expenses: expensesList.map(e => ({
+      description: e.description,
+      amount: Number(e.amount),
+      date: new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+    })),
+    totalExpenses: expensesList.reduce((acc, e) => acc + Number(e.amount), 0),
     products: Object.values(productSalesMap),
     stock: productsList.map(p => ({
       name: p.name,
@@ -275,9 +354,18 @@ export async function getRangeReportData(startDateStr: string, endDateStr: strin
     .select("id, name, current_stock, min_stock, unit, selling_price, production_cost")
     .eq("user_id", user.id);
 
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("user_id", user.id)
+    .gte("date", startDate.toISOString())
+    .lte("date", endDate.toISOString())
+    .order("date", { ascending: true });
+
   const salesList = sales ?? [];
   const purchasesList = purchases ?? [];
   const productsList = products ?? [];
+  const expensesList = expenses ?? [];
 
   const days: { date: string; label: string; revenue: number; consumption: number; profit: number; purchases: number; products: { name: string; quantity: number; revenue: number; consumption: number; profit: number }[] }[] = [];
 
@@ -359,6 +447,12 @@ export async function getRangeReportData(startDateStr: string, endDateStr: strin
     totalConsumption,
     totalProfit,
     totalPurchases,
+    expenses: expensesList.map(e => ({
+      description: e.description,
+      amount: Number(e.amount),
+      date: new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+    })),
+    totalExpenses: expensesList.reduce((acc, e) => acc + Number(e.amount), 0),
     products: Object.values(allProductsMap),
     stock: productsList.map(p => ({ name: p.name, stock: Number(p.current_stock), unit: p.unit })),
   };

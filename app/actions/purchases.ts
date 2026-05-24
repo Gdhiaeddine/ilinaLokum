@@ -24,11 +24,13 @@ export async function addPurchase(formData: FormData, items: { productId: string
   if (!user) throw new Error("Not authenticated");
 
   const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const dateStr = formData.get("purchase_date") as string;
+  const date = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
 
   const { data: purchaseData, error } = await supabase.from("purchase_orders").insert({
     supplier_id: formData.get("supplier_id") as string,
     total_amount: total,
-    date: new Date().toISOString(),
+    date,
     user_id: user.id,
   }).select().single();
 
