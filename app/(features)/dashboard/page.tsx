@@ -4,9 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboardData } from "@/app/actions/sales";
 import { KpiCard } from "./_components/KpiCard";
 import { SalesChart } from "./_components/SalesChart";
-import { ProductChart } from "./_components/ProductChart";
+import { TopSuppliers } from "./_components/TopSuppliers";
+import { ExpensesChart } from "./_components/ExpensesChart";
 import { RecentSales } from "./_components/RecentSales";
-import { IconFactory } from "@/shared/icon-factory";
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -81,19 +81,19 @@ export default function DashboardPage() {
           variant="profit"
         />
         <KpiCard
-          label="Articles vendus"
-          value={String(data.todayCount)}
-          change={`${data.salesChange >= 0 ? "+" : ""}${data.salesChange}% vs hier`}
-          isPositive={data.salesChange >= 0}
-          iconName="ShoppingCart"
-          variant="sales"
+          label="Chiffre d'affaires du mois"
+          value={`${data.monthRevenue.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA`}
+          change={`${data.monthRevenueChange >= 0 ? "+" : ""}${data.monthRevenueChange}% vs mois -1`}
+          isPositive={data.monthRevenueChange >= 0}
+          iconName="Money"
+          variant="revenue"
         />
         <KpiCard
-          label="Stock Faible"
-          value={`${data.lowStock.length} items`}
-          change={data.lowStock.length > 0 ? `${data.lowStock.length} alerte(s)` : "RAS"}
-          isPositive={data.lowStock.length === 0}
-          iconName="AlertTriangle"
+          label="Achats + dépenses du mois"
+          value={`${data.monthPurchasesExpenses.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA`}
+          change={`${data.monthPurchasesChange >= 0 ? "+" : ""}${data.monthPurchasesChange}% vs mois -1`}
+          isPositive={data.monthPurchasesChange <= 0}
+          iconName="Purchases"
           variant="stock"
         />
       </div>
@@ -112,11 +112,11 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl p-6 border border-[#E8D5C4]/50 card-shadow">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Produits Populaires</h2>
-              <p className="text-sm text-[#8C735A]">Top 5 des produits les plus vendus</p>
+              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Top Fournisseurs du Mois</h2>
+              <p className="text-sm text-[#8C735A]">Classement par montant d'achat</p>
             </div>
           </div>
-          <ProductChart data={data.topProducts} />
+          <TopSuppliers data={data.topSuppliers} />
         </div>
       </div>
 
@@ -124,45 +124,24 @@ export default function DashboardPage() {
         <div className="xl:col-span-2 bg-white rounded-2xl p-6 border border-[#E8D5C4]/50 card-shadow">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Transactions Récentes</h2>
-              <p className="text-sm text-[#8C735A]">Les dernières ventes du jour</p>
+              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Dépenses du Mois</h2>
+              <p className="text-sm text-[#8C735A]">Évolution journalière des dépenses</p>
             </div>
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-[#F5E9DA] text-[#C9A227]">
+              {new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+            </span>
           </div>
-          <RecentSales sales={data.recentSales} />
+          <ExpensesChart data={data.monthExpensesByDay} />
         </div>
 
         <div className="bg-white rounded-2xl p-6 border border-[#E8D5C4]/50 card-shadow">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Alertes Stock</h2>
-              <p className="text-sm text-[#8C735A]">Produits à surveiller</p>
+              <h2 className="font-serif text-lg font-bold text-[#2C2419]">Ventes Récentes</h2>
+              <p className="text-sm text-[#8C735A]">Les dernières ventes du jour</p>
             </div>
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${data.lowStock.length > 0 ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
-              {data.lowStock.length} Alerte(s)
-            </span>
           </div>
-          <div className="space-y-3">
-            {data.lowStock.length === 0 ? (
-              <div className="text-center py-8 text-[#8C735A]">
-                <IconFactory name="AlertTriangle" size={32} className="mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Aucune alerte de stock</p>
-              </div>
-            ) : (
-              data.lowStock.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <IconFactory name="AlertTriangle" className="text-red-500" size={16} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-[#2C2419] text-sm truncate">{item.name}</p>
-                    <p className="text-xs text-red-600">
-                      {item.current_stock}{item.unit} restant (min: {item.min_stock}{item.unit})
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <RecentSales sales={data.recentSales} />
         </div>
       </div>
     </div>

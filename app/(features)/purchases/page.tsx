@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { IconFactory } from '@/shared/icon-factory'
 import { getSuppliers } from '@/app/actions/suppliers'
 import { getProducts } from '@/app/actions/products'
@@ -9,14 +9,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/app/components/ConfirmDialog'
 
+const todayStr = () => new Date().toISOString().split('T')[0]
+
 export default function PurchasesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
-  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0])
+  const [purchaseDate, setPurchaseDate] = useState(todayStr())
   const [items, setItems] = useState([{ productId: '', quantity: 0, price: 0 }])
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
-  const [filterDate, setFilterDate] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [viewDate, setViewDate] = useState(todayStr())
 
   const queryClient = useQueryClient()
 
@@ -24,13 +25,15 @@ export default function PurchasesPage() {
   const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: getProducts })
   const { data: purchases = [], isLoading: purchasesLoading } = useQuery({ queryKey: ['purchases'], queryFn: getPurchases })
 
-  const filteredPurchases = useMemo(() => {
-    if (!filterDate) return purchases
-    return purchases.filter((p: any) => {
-      const d = new Date(p.date).toISOString().split('T')[0]
-      return d === filterDate
-    })
-  }, [purchases, filterDate])
+  const dayPurchases = purchases.filter((p: any) => new Date(p.date).toISOString().split('T')[0] === viewDate)
+  const dayTotal = dayPurchases.reduce((acc: number, p: any) => acc + (Number(p.total_amount) || 0), 0)
+
+  const formattedViewDate = new Date(viewDate).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -63,8 +66,13 @@ export default function PurchasesPage() {
 
   function resetForm() {
     setSupplierId('')
-    setPurchaseDate(new Date().toISOString().split('T')[0])
+    setPurchaseDate(todayStr())
     setItems([{ productId: '', quantity: 0, price: 0 }])
+  }
+
+  function openModal() {
+    resetForm()
+    setIsModalOpen(true)
   }
 
   function updateItem(index: number, field: string, value: string | number) {
@@ -85,37 +93,51 @@ export default function PurchasesPage() {
           <h1 className="font-serif text-2xl font-bold text-[#2C2419]">Achats</h1>
           <p className="text-sm text-[#8C735A]">Enregistrez et consultez l'historique de vos achats</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-sm font-medium transition-all ${showFilters ? 'bg-[#F5E9DA] border-[#C9A227] text-[#C9A227]' : 'border-[#E8D5C4] text-[#6B4F3A] hover:bg-[#FAF3EB]'}`}>
-            <IconFactory name="Filter" size={16} /> Filtrer
-          </button>
-          <button onClick={() => { resetForm(); setIsModalOpen(true) }} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
-            <IconFactory name="Plus" size={18} /> Nouvel achat
-          </button>
-        </div>
+        <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
+          <IconFactory name="Plus" size={18} /> Nouvel achat
+        </button>
       </div>
 
-      {showFilters && (
-        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 flex-wrap">
-            <div>
-              <label className="block text-xs font-medium text-[#6B4F3A] mb-1">Date</label>
-              <input
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="px-3 py-2 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
-              />
-            </div>
-            {filterDate && (
-              <button onClick={() => setFilterDate('')} className="px-3 py-2 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all">
-                <IconFactory name="Close" size={14} className="inline mr-1" /> Effacer filtre
-              </button>
-            )}
-            <span className="text-xs text-[#8C735A]">
-              {filterDate ? `${filteredPurchases.length} achat(s) trouve(s)` : `${purchases.length} achat(s) au total`}
-            </span>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative">
+          <IconFactory name="Calendar" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" />
+          <input
+            type="date"
+            value={viewDate}
+            onChange={(e) => setViewDate(e.target.value)}
+            className="pl-10 pr-4 py-2.5 bg-white border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+          />
+        </div>
+        <span className="text-sm text-[#6B4F3A] capitalize">{formattedViewDate}</span>
+        {viewDate !== todayStr() && (
+          <button onClick={() => setViewDate(todayStr())} className="text-xs text-[#C9A227] hover:underline">
+            Aujourd&apos;hui
+          </button>
+        )}
+      </div>
+
+      {purchasesLoading ? (
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-5 max-w-xl">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-[#E8D5C4]/50 animate-pulse" />
+            <div className="h-4 w-28 bg-[#E8D5C4]/50 rounded animate-pulse" />
           </div>
+          <div className="h-8 w-32 bg-[#E8D5C4]/50 rounded animate-pulse" />
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-5 max-w-xl">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
+              <IconFactory name="Purchases" className="text-white" size={18} />
+            </div>
+            <span className="text-sm font-medium text-[#6B4F3A]">Total des achats du jour</span>
+          </div>
+          <p className="font-serif text-2xl font-bold text-[#2C2419]">
+            {dayTotal.toFixed(2)} DA
+          </p>
+          <p className="text-xs text-[#8C735A] mt-1">
+            {dayPurchases.length} achat{dayPurchases.length > 1 ? 's' : ''} enregistre{dayPurchases.length > 1 ? 's' : ''}
+          </p>
         </div>
       )}
 
@@ -135,19 +157,19 @@ export default function PurchasesPage() {
             ))}
           </div>
         </div>
-      ) : filteredPurchases.length === 0 ? (
+      ) : dayPurchases.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-6 md:p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F5E9DA] flex items-center justify-center">
             <IconFactory name="Purchases" size={24} className="text-[#C9A227]" />
           </div>
           <h3 className="font-serif text-lg font-bold text-[#2C2419] mb-2">
-            {filterDate ? 'Aucun achat pour cette date' : 'Aucun achat enregistre'}
+            Aucun achat pour cette date
           </h3>
           <p className="text-sm text-[#8C735A] mb-4">
-            {filterDate ? 'Essayez avec une autre date' : 'Commencez en ajoutant votre premier achat'}
+            {viewDate === todayStr() ? 'Commencez en ajoutant votre premier achat' : 'Aucun achat enregistre a cette date'}
           </p>
-          {!filterDate && (
-            <button onClick={() => { resetForm(); setIsModalOpen(true) }} className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
+          {viewDate === todayStr() && (
+            <button onClick={openModal} className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
               Ajouter un achat
             </button>
           )}
@@ -158,7 +180,6 @@ export default function PurchasesPage() {
             <table className="w-full">
               <thead className="bg-[#FAF3EB]">
                 <tr>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Date</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Heure</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Fournisseur</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Articles</th>
@@ -167,13 +188,10 @@ export default function PurchasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8D5C4]/50">
-                {filteredPurchases.map((purchase: any) => {
+                {dayPurchases.map((purchase: any) => {
                   const purchaseDate = new Date(purchase.date)
                   return (
                     <tr key={purchase.id} className="hover:bg-[#FAF3EB]/50 transition-colors">
-                      <td className="px-6 py-4 text-sm text-[#2C2419]">
-                        {purchaseDate.toLocaleDateString('fr-FR')}
-                      </td>
                       <td className="px-6 py-4 text-sm text-[#8C735A]">
                         {purchaseDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                       </td>
@@ -207,7 +225,7 @@ export default function PurchasesPage() {
             </table>
           </div>
           <div className="md:hidden divide-y divide-[#E8D5C4]/50">
-            {filteredPurchases.map((purchase: any) => {
+            {dayPurchases.map((purchase: any) => {
               const purchaseDate = new Date(purchase.date)
               return (
                 <div key={purchase.id} className="p-4">
@@ -219,7 +237,7 @@ export default function PurchasesPage() {
                       <div>
                         <span className="font-medium text-[#2C2419] text-sm block">{purchase.suppliers?.name || '-'}</span>
                         <span className="text-xs text-[#8C735A]">
-                          {purchaseDate.toLocaleDateString('fr-FR')} a {purchaseDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          {purchaseDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>

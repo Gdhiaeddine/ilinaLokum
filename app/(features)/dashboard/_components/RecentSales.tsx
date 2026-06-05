@@ -4,7 +4,6 @@ import { IconFactory } from "@/shared/icon-factory";
 
 interface RecentSale {
   id: string;
-  products: string;
   total: number;
   time: string;
 }
@@ -32,10 +31,10 @@ export function RecentSales({ sales }: RecentSalesProps) {
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
-              <IconFactory name="ShoppingCart" className="text-white" size={18} />
+              <IconFactory name="DollarSign" className="text-white" size={18} />
             </div>
             <div>
-              <p className="font-medium text-[#2C2419] text-sm">{sale.products}</p>
+              <p className="font-medium text-[#2C2419] text-sm">Vente</p>
               <p className="text-xs text-[#8C735A]">{sale.time}</p>
             </div>
           </div>

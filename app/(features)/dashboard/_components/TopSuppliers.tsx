@@ -2,17 +2,22 @@
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
-interface ProductChartProps {
-  data: { name: string; quantity: number }[];
+interface TopSupplier {
+  name: string;
+  total: number;
+}
+
+interface TopSuppliersProps {
+  data: TopSupplier[];
 }
 
 const COLORS = ["#D4AF37", "#C9A227", "#A67C00", "#8C735A", "#6B4F3A"];
 
-export function ProductChart({ data }: ProductChartProps) {
+export function TopSuppliers({ data }: TopSuppliersProps) {
   if (!data || data.length === 0) {
     return (
       <div className="h-[300px] w-full flex items-center justify-center text-[#8C735A]">
-        <p className="text-sm">Aucune donnee pour cette periode</p>
+        <p className="text-sm">Aucun achat ce mois-ci</p>
       </div>
     );
   }
@@ -36,10 +41,10 @@ export function ProductChart({ data }: ProductChartProps) {
               borderRadius: "12px",
               boxShadow: "0 4px 20px rgba(201,162,39,0.1)",
             }}
-            formatter={(val: number) => [`${val} vendus` as any, ""]}
+            formatter={(val: number) => [`${val.toFixed(2)} DA` as any, "Montant"]}
             labelStyle={{ display: "none" }}
           />
-          <Bar dataKey="quantity" radius={[0, 8, 8, 0]} barSize={24}>
+          <Bar dataKey="total" radius={[0, 8, 8, 0]} barSize={24}>
             {data.map((_entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
