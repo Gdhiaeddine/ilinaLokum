@@ -1,7 +1,10 @@
 "use server";
 
 import { createClient } from "@/services/supabase/server";
+import { ensureBucket } from "@/services/supabase/admin";
 import { revalidatePath } from "next/cache";
+
+const PURCHASE_IMAGES_BUCKET = "purchase-images";
 
 export async function getPurchases() {
   const supabase = await createClient();
@@ -26,15 +29,48 @@ export async function addPurchase(formData: FormData, items: { productId: string
   const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const dateStr = formData.get("purchase_date") as string;
   const date = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+  const receiptImage = formData.get("receipt_image");
+  let imageUrl: string | null = null;
+  let imagePath: string | null = null;
+
+  if (receiptImage instanceof File && receiptImage.size > 0) {
+    if (!receiptImage.type.startsWith("image/")) {
+      throw new Error("Invalid image file");
+    }
+
+    await ensureBucket(PURCHASE_IMAGES_BUCKET, true);
+
+    const safeName = receiptImage.name.replace(/[^a-zA-Z0-9.-]/g, "-");
+    imagePath = `${user.id}/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from(PURCHASE_IMAGES_BUCKET)
+      .upload(imagePath, receiptImage, {
+        contentType: receiptImage.type,
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from(PURCHASE_IMAGES_BUCKET)
+      .getPublicUrl(imagePath);
+    imageUrl = data.publicUrl;
+  }
 
   const { data: purchaseData, error } = await supabase.from("purchase_orders").insert({
     supplier_id: formData.get("supplier_id") as string,
     total_amount: total,
     date,
+    image_url: imageUrl,
     user_id: user.id,
   }).select().single();
 
-  if (error || !purchaseData) throw error;
+  if (error || !purchaseData) {
+    if (imagePath) {
+      await supabase.storage.from(PURCHASE_IMAGES_BUCKET).remove([imagePath]);
+    }
+    throw error;
+  }
 
   const itemsToInsert = items.map(item => ({
     purchase_order_id: purchaseData.id,

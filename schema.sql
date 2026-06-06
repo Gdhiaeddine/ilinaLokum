@@ -67,6 +67,7 @@ CREATE TABLE purchase_orders (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
   total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  image_url TEXT,
   date DATE NOT NULL DEFAULT CURRENT_DATE
 );
 

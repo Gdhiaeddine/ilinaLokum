@@ -41,12 +41,12 @@ export function MobileSidebar() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[60] lg:hidden">
+        <div className="fixed inset-0 z-60 lg:hidden">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-0 top-0 bottom-0 w-72 bg-[#FAF3EB] border-r border-[#E8D5C4] flex flex-col overflow-y-auto">
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-cream-light border-r border-[#E8D5C4] flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-[#E8D5C4]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-gold-gradient-start to-[#C9A227] flex items-center justify-center flex-shrink-0">
                   <Image
                     src="/logo.png"
                     width={20}

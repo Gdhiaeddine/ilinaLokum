@@ -67,6 +67,7 @@ export interface Database {
           created_at: string;
           supplier_id: string;
           total_amount: number;
+          image_url: string | null;
           date: string;
           user_id: string;
         };

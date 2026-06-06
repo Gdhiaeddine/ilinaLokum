@@ -8,15 +8,71 @@ import { getPurchases, addPurchase, deletePurchase } from '@/app/actions/purchas
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/app/components/ConfirmDialog'
+import { PurchaseDetailsModal } from './PurchaseDetailsModal'
 
 const todayStr = () => new Date().toISOString().split('T')[0]
+const MAX_IMAGE_WIDTH = 1600
+const IMAGE_QUALITY = 0.75
+
+function compressImage(file: File) {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Selectionnez une image valide')
+  }
+
+  return new Promise<File>((resolve, reject) => {
+    const image = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+
+      const scale = Math.min(1, MAX_IMAGE_WIDTH / image.width)
+      const width = Math.round(image.width * scale)
+      const height = Math.round(image.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error("Impossible de compresser l'image"))
+        return
+      }
+
+      ctx.drawImage(image, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Impossible de compresser l'image"))
+            return
+          }
+
+          const compressedName = file.name.replace(/\.[^.]+$/, '.jpg')
+          resolve(new File([blob], compressedName, { type: 'image/jpeg' }))
+        },
+        'image/jpeg',
+        IMAGE_QUALITY
+      )
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error("Impossible de lire l'image"))
+    }
+
+    image.src = objectUrl
+  })
+}
 
 export default function PurchasesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
   const [purchaseDate, setPurchaseDate] = useState(todayStr())
   const [items, setItems] = useState([{ productId: '', quantity: 0, price: 0 }])
+  const [receiptImage, setReceiptImage] = useState<File | null>(null)
+  const [receiptImageName, setReceiptImageName] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
+  const [detailsPurchase, setDetailsPurchase] = useState<any | null>(null)
   const [viewDate, setViewDate] = useState(todayStr())
 
   const queryClient = useQueryClient()
@@ -40,6 +96,9 @@ export default function PurchasesPage() {
       const formData = new FormData()
       formData.append('supplier_id', supplierId)
       formData.append('purchase_date', purchaseDate)
+      if (receiptImage) {
+        formData.append('receipt_image', receiptImage)
+      }
       const validItems = items.filter(i => i.productId && i.quantity > 0 && i.price > 0)
       if (!supplierId) throw new Error('Selectionnez un fournisseur')
       if (validItems.length === 0) throw new Error('Ajoutez au moins un article valide')
@@ -68,6 +127,8 @@ export default function PurchasesPage() {
     setSupplierId('')
     setPurchaseDate(todayStr())
     setItems([{ productId: '', quantity: 0, price: 0 }])
+    setReceiptImage(null)
+    setReceiptImageName('')
   }
 
   function openModal() {
@@ -84,6 +145,27 @@ export default function PurchasesPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     addMutation.mutate()
+  }
+
+  async function handleReceiptImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) {
+      setReceiptImage(null)
+      setReceiptImageName('')
+      return
+    }
+
+    try {
+      const compressed = await compressImage(file)
+      setReceiptImage(compressed)
+      setReceiptImageName(`${file.name} (${(compressed.size / 1024).toFixed(0)} Ko)`)
+      toast.success('Image compressee')
+    } catch (err: any) {
+      setReceiptImage(null)
+      setReceiptImageName('')
+      e.target.value = ''
+      toast.error(err.message || "Erreur de compression de l'image")
+    }
   }
 
   return (
@@ -183,6 +265,7 @@ export default function PurchasesPage() {
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Heure</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Fournisseur</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Articles</th>
+                  <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Image</th>
                   <th className="text-right px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Total</th>
                   <th className="text-right px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Actions</th>
                 </tr>
@@ -208,11 +291,23 @@ export default function PurchasesPage() {
                           `${pi.products?.name || '?'} (${pi.quantity} ${pi.products?.unit || ''})`
                         ).join(', ') || '-'}
                       </td>
+                      <td className="px-6 py-4">
+                        {purchase.image_url ? (
+                          <a href={purchase.image_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-medium text-[#C9A227] hover:underline">
+                            <IconFactory name="Image" size={16} /> Voir
+                          </a>
+                        ) : (
+                          <span className="text-sm text-[#8C735A]">-</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <span className="font-bold text-[#2C2419]">{purchase.total_amount} DA</span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => setDetailsPurchase(purchase)} className="p-2 text-[#8C735A] hover:text-[#C9A227] hover:bg-[#FAF3EB] rounded-lg transition-colors" aria-label="Voir les détails">
+                            <IconFactory name="Eye" size={16} />
+                          </button>
                           <button onClick={() => setDeleteConfirm({ isOpen: true, id: purchase.id })} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                             <IconFactory name="Delete" size={16} />
                           </button>
@@ -248,7 +343,15 @@ export default function PurchasesPage() {
                       `${pi.products?.name || '?'} (${pi.quantity} ${pi.products?.unit || ''})`
                     ).join(', ') || '-'}
                   </div>
-                  <div className="flex items-center justify-end">
+                  {purchase.image_url && (
+                    <div className="text-xs text-[#C9A227] mb-3 ml-12 flex items-center gap-1">
+                      <IconFactory name="Image" size={14} /> Justificatif attaché
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setDetailsPurchase(purchase)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#6B4F3A] hover:text-[#C9A227] hover:bg-[#FAF3EB] rounded-lg transition-colors">
+                      <IconFactory name="Eye" size={14} /> Détails
+                    </button>
                     <button onClick={() => setDeleteConfirm({ isOpen: true, id: purchase.id })} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                       <IconFactory name="Delete" size={14} /> Supprimer
                     </button>
@@ -269,6 +372,11 @@ export default function PurchasesPage() {
           setDeleteConfirm({ isOpen: false, id: null })
         }}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
+
+      <PurchaseDetailsModal
+        purchase={detailsPurchase}
+        onClose={() => setDetailsPurchase(null)}
       />
 
       {isModalOpen && (
@@ -299,6 +407,18 @@ export default function PurchasesPage() {
                   <option value="">Selectionner un fournisseur</option>
                   {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#2C2419] mb-1">Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleReceiptImageChange}
+                  className="w-full px-4 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] file:mr-3 file:border-0 file:bg-[#C9A227] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white file:rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+                />
+                {receiptImageName && (
+                  <p className="mt-1 text-xs text-[#6B4F3A]">{receiptImageName}</p>
+                )}
               </div>
 
               {items.map((item, index) => (

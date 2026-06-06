@@ -37,6 +37,7 @@ const iconMap = {
   Download: Icons.Download,
   Filter: Icons.Filter,
   Eye: Icons.Eye,
+  Image: Icons.Image,
   Mail: Icons.Mail,
   Phone: Icons.Phone,
   MapPin: Icons.MapPin,
