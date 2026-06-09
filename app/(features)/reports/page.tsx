@@ -17,6 +17,8 @@ export default function ReportsPage() {
   const [appliedStart, setAppliedStart] = useState('')
   const [appliedEnd, setAppliedEnd] = useState('')
   const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const [isExportingCharges, setIsExportingCharges] = useState(false)
+  const [isExportingVentes, setIsExportingVentes] = useState(false)
 
   const customApplied = appliedStart !== '' && appliedEnd !== ''
 
@@ -86,6 +88,36 @@ export default function ReportsPage() {
     }))
   }, [data])
 
+  function groupByDateWithTotals<T extends { date: string }>(
+    items: T[],
+    cols: (item: T) => string[],
+    totalCol: (item: T) => number,
+    colCount: number
+  ): { row: string[]; isSubtotal: boolean; dayTotal: number }[] {
+    const map = new Map<string, T[]>()
+    for (const item of items) {
+      const key = item.date
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(item)
+    }
+
+    const result: { row: string[]; isSubtotal: boolean; dayTotal: number }[] = []
+    for (const [date, group] of map) {
+      let daySum = 0
+      for (const item of group) {
+        daySum += totalCol(item)
+        const row = cols(item)
+        row[colCount - 1] = `${totalCol(item).toFixed(2)} DA`
+        result.push({ row, isSubtotal: false, dayTotal: 0 })
+      }
+      const subtotal = new Array(colCount).fill('')
+      subtotal[0] = `Total ${date}`
+      subtotal[colCount - 1] = `${daySum.toFixed(2)} DA`
+      result.push({ row: subtotal, isSubtotal: true, dayTotal: daySum })
+    }
+    return result
+  }
+
   async function exportPdf() {
     setIsExportingPdf(true)
     try {
@@ -123,6 +155,7 @@ export default function ReportsPage() {
         autoTable(doc, {
           startY: yPos,
           body: [
+            ['Periode', periodLabels[period]],
             ['Chiffre d\'affaires', `${report.totalRevenue.toFixed(2)} DA`],
             ['Total Achats', `${report.totalPurchases.toFixed(2)} DA`],
             ['Total Depenses', `${report.totalExpenses.toFixed(2)} DA`],
@@ -133,7 +166,7 @@ export default function ReportsPage() {
           styles: { fontSize: 10, cellPadding: 5 },
           columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
           didParseCell: function(data: any) {
-            if (data.row.index === 4 && data.column.index === 1) {
+            if (data.row.index === 5 && data.column.index === 1) {
               const val = parseFloat((data.cell.raw as string).replace(/[^\d.-]/g, ''))
               data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
               data.cell.styles.fontSize = 12
@@ -152,16 +185,24 @@ export default function ReportsPage() {
       yPos += 4
 
       if (report && report.purchases.length > 0) {
+        const groupedP = groupByDateWithTotals(report.purchases, (p) => [p.date, p.supplier, ''], (p) => p.total, 3)
         autoTable(doc, {
           startY: yPos,
           head: [['Date', 'Fournisseur', 'Total (DA)']],
-          body: report.purchases.map((p: any) => [p.date, p.supplier, p.total.toFixed(2)]),
+          body: groupedP.map((g) => g.row),
           foot: [['', 'Total', `${report.totalPurchases.toFixed(2)} DA`]],
           theme: 'grid',
           headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
           footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
           styles: { fontSize: 9, cellPadding: 4 },
           columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 85 }, 2: { cellWidth: 35, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedP[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
         })
         yPos = (doc as any).lastAutoTable.finalY + 10
       } else {
@@ -181,16 +222,24 @@ export default function ReportsPage() {
       yPos += 4
 
       if (report && report.expenses.length > 0) {
+        const groupedE = groupByDateWithTotals(report.expenses, (e) => [e.date, e.description, ''], (e) => e.amount, 3)
         autoTable(doc, {
           startY: yPos,
           head: [['Date', 'Description', 'Montant (DA)']],
-          body: report.expenses.map((e: any) => [e.date, e.description, e.amount.toFixed(2)]),
+          body: groupedE.map((g) => g.row),
           foot: [['', 'Total', `${report.totalExpenses.toFixed(2)} DA`]],
           theme: 'grid',
           headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
           footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
           styles: { fontSize: 9, cellPadding: 4 },
           columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 85 }, 2: { cellWidth: 35, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedE[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
         })
         yPos = (doc as any).lastAutoTable.finalY + 10
       } else {
@@ -198,6 +247,43 @@ export default function ReportsPage() {
         doc.setFontSize(10)
         doc.setTextColor(140, 115, 90)
         doc.text('Aucune depense pour cette periode', 14, yPos + 5)
+        yPos += 15
+      }
+
+      if (yPos > 240) { doc.addPage(); yPos = 20 }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(14)
+      doc.setTextColor(44, 36, 25)
+      doc.text('Ventes', 14, yPos)
+      yPos += 4
+
+      if (report && report.sales.length > 0) {
+        const groupedS = groupByDateWithTotals(report.sales, (s) => [s.date, ''], (s) => s.total, 2)
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Montant (DA)']],
+          body: groupedS.map((g) => g.row),
+          foot: [['', `Total: ${report.totalRevenue.toFixed(2)} DA`]],
+          theme: 'grid',
+          headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+          footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: { 0: { cellWidth: 85 }, 1: { cellWidth: 85, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedS[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      } else {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+        doc.setTextColor(140, 115, 90)
+        doc.text('Aucune vente pour cette periode', 14, yPos + 5)
         yPos += 15
       }
 
@@ -211,6 +297,247 @@ export default function ReportsPage() {
       console.error('PDF export error:', err)
     } finally {
       setIsExportingPdf(false)
+    }
+  }
+
+  async function exportCharges() {
+    setIsExportingCharges(true)
+    try {
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+
+      const titleMap: Record<string, string> = {
+        daily: 'Depenses + Achats Journaliers',
+        weekly: 'Depenses + Achats Hebdomadaires',
+        monthly: 'Depenses + Achats Mensuels',
+        custom: 'Depenses + Achats Personnalises',
+      }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(20)
+      doc.setTextColor(44, 36, 25)
+      doc.text(titleMap[period], pageWidth / 2, 20, { align: 'center' })
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(11)
+      doc.setTextColor(140, 115, 90)
+      doc.text(periodLabels[period], pageWidth / 2, 28, { align: 'center' })
+
+      let yPos = 40
+
+      const report = period === 'daily' ? dailyReport : rangeReport
+
+      if (report) {
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Resume Financier', 14, yPos)
+        yPos += 4
+
+        autoTable(doc, {
+          startY: yPos,
+          body: [
+            ['Periode', periodLabels[period]],
+            ['Total Achats', `${report.totalPurchases.toFixed(2)} DA`],
+            ['Total Depenses', `${report.totalExpenses.toFixed(2)} DA`],
+            ['Total Charges', `${(report.totalPurchases + report.totalExpenses).toFixed(2)} DA`],
+          ],
+          theme: 'grid',
+          styles: { fontSize: 10, cellPadding: 5 },
+          columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      }
+
+      if (yPos > 240) { doc.addPage(); yPos = 20 }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(14)
+      doc.setTextColor(44, 36, 25)
+      doc.text('Achats', 14, yPos)
+      yPos += 4
+
+      if (report && report.purchases.length > 0) {
+        const groupedP = groupByDateWithTotals(report.purchases, (p) => [p.date, p.supplier, ''], (p) => p.total, 3)
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Fournisseur', 'Total (DA)']],
+          body: groupedP.map((g) => g.row),
+          foot: [['', 'Total', `${report.totalPurchases.toFixed(2)} DA`]],
+          theme: 'grid',
+          headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+          footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 85 }, 2: { cellWidth: 35, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedP[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      } else {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+        doc.setTextColor(140, 115, 90)
+        doc.text('Aucun achat pour cette periode', 14, yPos + 5)
+        yPos += 15
+      }
+
+      if (yPos > 240) { doc.addPage(); yPos = 20 }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(14)
+      doc.setTextColor(44, 36, 25)
+      doc.text('Depenses', 14, yPos)
+      yPos += 4
+
+      if (report && report.expenses.length > 0) {
+        const groupedE = groupByDateWithTotals(report.expenses, (e) => [e.date, e.description, ''], (e) => e.amount, 3)
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Description', 'Montant (DA)']],
+          body: groupedE.map((g) => g.row),
+          foot: [['', 'Total', `${report.totalExpenses.toFixed(2)} DA`]],
+          theme: 'grid',
+          headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+          footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 85 }, 2: { cellWidth: 35, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedE[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      } else {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+        doc.setTextColor(140, 115, 90)
+        doc.text('Aucune depense pour cette periode', 14, yPos + 5)
+        yPos += 15
+      }
+
+      const filename = period === 'daily'
+        ? `depenses-achats-journalier-${now.toISOString().split('T')[0]}.pdf`
+        : period === 'custom'
+        ? `depenses-achats-${appliedStart}-a-${appliedEnd}.pdf`
+        : `depenses-achats-${period}-${rangeStart.toISOString().split('T')[0]}-a-${rangeEnd.toISOString().split('T')[0]}.pdf`
+      doc.save(filename)
+    } catch (err) {
+      console.error('PDF export error:', err)
+    } finally {
+      setIsExportingCharges(false)
+    }
+  }
+
+  async function exportVentes() {
+    setIsExportingVentes(true)
+    try {
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+
+      const titleMap: Record<string, string> = {
+        daily: 'Ventes Journalieres',
+        weekly: 'Ventes Hebdomadaires',
+        monthly: 'Ventes Mensuelles',
+        custom: 'Ventes Personnalisees',
+      }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(20)
+      doc.setTextColor(44, 36, 25)
+      doc.text(titleMap[period], pageWidth / 2, 20, { align: 'center' })
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(11)
+      doc.setTextColor(140, 115, 90)
+      doc.text(periodLabels[period], pageWidth / 2, 28, { align: 'center' })
+
+      let yPos = 40
+
+      const report = period === 'daily' ? dailyReport : rangeReport
+
+      if (report) {
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(14)
+        doc.setTextColor(44, 36, 25)
+        doc.text('Resume', 14, yPos)
+        yPos += 4
+
+        autoTable(doc, {
+          startY: yPos,
+          body: [
+            ['Periode', periodLabels[period]],
+            ['Total Ventes', `${report.totalRevenue.toFixed(2)} DA`],
+            ['Benefice net', `${report.totalProfit.toFixed(2)} DA`],
+          ],
+          theme: 'grid',
+          styles: { fontSize: 10, cellPadding: 5 },
+          columnStyles: { 0: { cellWidth: 90, fontStyle: 'bold', textColor: [107, 79, 58] }, 1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' } },
+          didParseCell: function(data: any) {
+            if (data.row.index === 2 && data.column.index === 1) {
+              const val = parseFloat((data.cell.raw as string).replace(/[^\d.-]/g, ''))
+              data.cell.styles.textColor = val >= 0 ? [44, 122, 44] : [220, 50, 50]
+              data.cell.styles.fontSize = 12
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      }
+
+      if (yPos > 240) { doc.addPage(); yPos = 20 }
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(14)
+      doc.setTextColor(44, 36, 25)
+      doc.text('Ventes', 14, yPos)
+      yPos += 4
+
+      if (report && report.sales.length > 0) {
+        const groupedS = groupByDateWithTotals(report.sales, (s) => [s.date, ''], (s) => s.total, 2)
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Montant (DA)']],
+          body: groupedS.map((g) => g.row),
+          foot: [['', `Total: ${report.totalRevenue.toFixed(2)} DA`]],
+          theme: 'grid',
+          headStyles: { fillColor: [212, 175, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+          footStyles: { fillColor: [245, 233, 218], textColor: [44, 36, 25], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 4 },
+          columnStyles: { 0: { cellWidth: 85 }, 1: { cellWidth: 85, halign: 'right' } },
+          didParseCell: function(data: any) {
+            const item = groupedS[data.row.index]
+            if (item?.isSubtotal) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [240, 230, 210]
+            }
+          },
+        })
+        yPos = (doc as any).lastAutoTable.finalY + 10
+      } else {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+        doc.setTextColor(140, 115, 90)
+        doc.text('Aucune vente pour cette periode', 14, yPos + 5)
+        yPos += 15
+      }
+
+      const filename = period === 'daily'
+        ? `ventes-journalieres-${now.toISOString().split('T')[0]}.pdf`
+        : period === 'custom'
+        ? `ventes-${appliedStart}-a-${appliedEnd}.pdf`
+        : `ventes-${period}-${rangeStart.toISOString().split('T')[0]}-a-${rangeEnd.toISOString().split('T')[0]}.pdf`
+      doc.save(filename)
+    } catch (err) {
+      console.error('PDF export error:', err)
+    } finally {
+      setIsExportingVentes(false)
     }
   }
 
@@ -503,13 +830,29 @@ export default function ReportsPage() {
 
       <div className="bg-white rounded-2xl p-6 border border-[#E8D5C4]/50 card-shadow">
         <h2 className="font-serif text-lg font-bold text-[#2C2419] mb-4">Exportation</h2>
-        <button
-          onClick={exportPdf}
-          disabled={isExportingPdf || (period === 'daily' && !dailyReport) || (period !== 'daily' && !rangeReport)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <IconFactory name="Download" size={16} /> {isExportingPdf ? 'Generation...' : 'Exporter PDF'}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={exportPdf}
+            disabled={isExportingPdf || (period === 'daily' && !dailyReport) || (period !== 'daily' && !rangeReport)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white rounded-xl text-sm font-medium hover:from-[#C9A227] hover:to-[#B89219] transition-all shadow-lg shadow-[#C9A227]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <IconFactory name="Download" size={16} /> {isExportingPdf ? 'Generation...' : 'Exporter PDF'}
+          </button>
+          <button
+            onClick={exportCharges}
+            disabled={isExportingCharges || (period === 'daily' && !dailyReport) || (period !== 'daily' && !rangeReport)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-400 to-orange-500 text-white rounded-xl text-sm font-medium hover:from-orange-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <IconFactory name="Download" size={16} /> {isExportingCharges ? 'Generation...' : 'PDF Depenses + Achats'}
+          </button>
+          <button
+            onClick={exportVentes}
+            disabled={isExportingVentes || (period === 'daily' && !dailyReport) || (period !== 'daily' && !rangeReport)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl text-sm font-medium hover:from-green-600 hover:to-green-700 transition-all shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <IconFactory name="Download" size={16} /> {isExportingVentes ? 'Generation...' : 'PDF Ventes'}
+          </button>
+        </div>
       </div>
     </div>
   )

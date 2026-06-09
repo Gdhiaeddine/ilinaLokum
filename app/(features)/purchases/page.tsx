@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { IconFactory } from '@/shared/icon-factory'
 import { getSuppliers } from '@/app/actions/suppliers'
 import { getProducts } from '@/app/actions/products'
@@ -64,6 +64,53 @@ function compressImage(file: File) {
   })
 }
 
+type Period = 'day' | 'week' | 'month' | 'year' | 'interval'
+
+function getWeekBounds(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return {
+    start: monday.toISOString().split('T')[0],
+    end: sunday.toISOString().split('T')[0],
+  }
+}
+
+function purchasesInPeriod(purchases: any[], period: Period, month: number, year: string, intervalStart: string, intervalEnd: string) {
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+
+  if (period === 'day') {
+    return purchases.filter((p) => new Date(p.date).toISOString().split('T')[0] === today)
+  }
+  if (period === 'week') {
+    const { start, end } = getWeekBounds(today)
+    return purchases.filter((p) => {
+      const d = new Date(p.date).toISOString().split('T')[0]
+      return d >= start && d <= end
+    })
+  }
+  if (period === 'month') {
+    const prefix = `${year}-${String(month).padStart(2, '0')}`
+    return purchases.filter((p) => new Date(p.date).toISOString().startsWith(prefix))
+  }
+  if (period === 'year') {
+    return purchases.filter((p) => new Date(p.date).toISOString().startsWith(year))
+  }
+  if (period === 'interval') {
+    if (!intervalStart || !intervalEnd) return []
+    return purchases.filter((p) => {
+      const d = new Date(p.date).toISOString().split('T')[0]
+      return d >= intervalStart && d <= intervalEnd
+    })
+  }
+  return purchases
+}
+
 export default function PurchasesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
@@ -73,7 +120,13 @@ export default function PurchasesPage() {
   const [receiptImageName, setReceiptImageName] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null })
   const [detailsPurchase, setDetailsPurchase] = useState<any | null>(null)
-  const [viewDate, setViewDate] = useState(todayStr())
+
+  const [period, setPeriod] = useState<Period>('day')
+  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [year, setYear] = useState(todayStr().slice(0, 4))
+  const [intervalStart, setIntervalStart] = useState(todayStr())
+  const [intervalEnd, setIntervalEnd] = useState(todayStr())
+  const [searchQuery, setSearchQuery] = useState('')
 
   const queryClient = useQueryClient()
 
@@ -81,15 +134,56 @@ export default function PurchasesPage() {
   const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: getProducts })
   const { data: purchases = [], isLoading: purchasesLoading } = useQuery({ queryKey: ['purchases'], queryFn: getPurchases })
 
-  const dayPurchases = purchases.filter((p: any) => new Date(p.date).toISOString().split('T')[0] === viewDate)
-  const dayTotal = dayPurchases.reduce((acc: number, p: any) => acc + (Number(p.total_amount) || 0), 0)
+  const periodPurchases = useMemo(
+    () => purchasesInPeriod(purchases, period, month, year, intervalStart, intervalEnd),
+    [purchases, period, month, year, intervalStart, intervalEnd]
+  )
 
-  const formattedViewDate = new Date(viewDate).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })
+  const searchQueryLower = searchQuery.trim().toLowerCase()
+  const filteredPurchases = useMemo(() => {
+    if (!searchQueryLower) return periodPurchases
+    return periodPurchases.filter((p: any) =>
+      (p.purchase_items ?? []).some((pi: any) => {
+        const name = (pi.products?.name ?? '').toLowerCase()
+        return name.includes(searchQueryLower)
+      })
+    )
+  }, [periodPurchases, searchQueryLower])
+
+  const periodTotal = periodPurchases.reduce((acc: number, p: any) => acc + (Number(p.total_amount) || 0), 0)
+
+  const periodLabel = useMemo(() => {
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+
+    if (period === 'day') {
+      return now.toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+    }
+    if (period === 'week') {
+      const { start, end } = getWeekBounds(today)
+      const s = new Date(start + 'T00:00:00')
+      const e = new Date(end + 'T00:00:00')
+      return `Semaine du ${s.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} au ${e.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
+    }
+    if (period === 'month') {
+      const d = new Date(Number(year), month - 1, 1)
+      return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    }
+    if (period === 'year') {
+      return year
+    }
+    if (intervalStart && intervalEnd) {
+      const s = new Date(intervalStart + 'T00:00:00')
+      const e = new Date(intervalEnd + 'T00:00:00')
+      return `Du ${s.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })} au ${e.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
+    }
+    return 'Intervalle'
+  }, [period, month, year, intervalStart, intervalEnd])
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -168,32 +262,126 @@ export default function PurchasesPage() {
     }
   }
 
+  const periodButtons: { key: Period; label: string }[] = [
+    { key: 'day', label: "Aujourd'hui" },
+    { key: 'week', label: 'Semaine' },
+    { key: 'month', label: 'Mois' },
+    { key: 'year', label: 'Année' },
+    { key: 'interval', label: 'Intervalle' },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl font-bold text-[#2C2419]">Achats</h1>
-          <p className="text-sm text-[#8C735A]">Enregistrez et consultez l'historique de vos achats</p>
+          <p className="text-sm text-[#8C735A]">Enregistrez et consultez l&apos;historique de vos achats</p>
         </div>
         <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
           <IconFactory name="Plus" size={18} /> Nouvel achat
         </button>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <IconFactory name="Calendar" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" />
-          <input
-            type="date"
-            value={viewDate}
-            onChange={(e) => setViewDate(e.target.value)}
-            className="pl-10 pr-4 py-2.5 bg-white border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
-          />
+      <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-3 sm:p-4">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {periodButtons.map((btn) => (
+            <button
+              key={btn.key}
+              onClick={() => setPeriod(btn.key)}
+              className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                period === btn.key
+                  ? 'bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white shadow-md shadow-[#C9A227]/20'
+                  : 'bg-[#FAF3EB] text-[#6B4F3A] hover:bg-[#F5E9DA]'
+              }`}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
-        <span className="text-sm text-[#6B4F3A] capitalize">{formattedViewDate}</span>
-        {viewDate !== todayStr() && (
-          <button onClick={() => setViewDate(todayStr())} className="text-xs text-[#C9A227] hover:underline">
-            Aujourd&apos;hui
+
+        {period === 'day' && (
+          <p className="text-sm text-[#8C735A]">Automatiquement aujourd&apos;hui</p>
+        )}
+
+        {period === 'week' && (
+          <p className="text-sm text-[#8C735A]">Automatiquement cette semaine</p>
+        )}
+
+        {period === 'month' && (
+          <div className="flex items-center gap-3">
+            <select
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              className="px-3 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {new Date(2000, i, 1).toLocaleDateString('fr-FR', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="2000"
+              max="2099"
+              value={year}
+              onChange={(e) => setYear(e.target.value || todayStr().slice(0, 4))}
+              className="px-3 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 w-28"
+            />
+          </div>
+        )}
+
+        {period === 'year' && (
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <IconFactory name="Calendar" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" />
+              <input
+                type="number"
+                min="2000"
+                max="2099"
+                value={year}
+                onChange={(e) => setYear(e.target.value || todayStr().slice(0, 4))}
+                className="pl-10 pr-4 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30 w-28"
+              />
+            </div>
+          </div>
+        )}
+
+        {period === 'interval' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-[#6B4F3A]">Du</span>
+            <input
+              type="date"
+              value={intervalStart}
+              onChange={(e) => setIntervalStart(e.target.value)}
+              className="px-3 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+            />
+            <span className="text-sm text-[#6B4F3A]">au</span>
+            <input
+              type="date"
+              value={intervalEnd}
+              onChange={(e) => setIntervalEnd(e.target.value)}
+              className="px-3 py-2.5 bg-[#FAF3EB] border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <IconFactory name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8C735A]" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Rechercher par nom de produit..."
+          className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E8D5C4] rounded-xl text-sm text-[#2C2419] placeholder:text-[#8C735A]/60 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/30"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C735A] hover:text-[#2C2419]"
+          >
+            <IconFactory name="Close" size={16} />
           </button>
         )}
       </div>
@@ -212,13 +400,18 @@ export default function PurchasesPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center">
               <IconFactory name="Purchases" className="text-white" size={18} />
             </div>
-            <span className="text-sm font-medium text-[#6B4F3A]">Total des achats du jour</span>
+            <span className="text-sm font-medium text-[#6B4F3A]">Total · {periodLabel}</span>
           </div>
           <p className="font-serif text-2xl font-bold text-[#2C2419]">
-            {dayTotal.toFixed(2)} DA
+            {periodTotal.toFixed(2)} DA
           </p>
           <p className="text-xs text-[#8C735A] mt-1">
-            {dayPurchases.length} achat{dayPurchases.length > 1 ? 's' : ''} enregistre{dayPurchases.length > 1 ? 's' : ''}
+            {periodPurchases.length} achat{periodPurchases.length > 1 ? 's' : ''} enregistre{periodPurchases.length > 1 ? 's' : ''}
+            {searchQuery && (
+              <span className="ml-1">
+                — {filteredPurchases.length} résultat{filteredPurchases.length > 1 ? 's' : ''} pour &ldquo;{searchQuery}&rdquo;
+              </span>
+            )}
           </p>
         </div>
       )}
@@ -239,18 +432,22 @@ export default function PurchasesPage() {
             ))}
           </div>
         </div>
-      ) : dayPurchases.length === 0 ? (
+      ) : filteredPurchases.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#E8D5C4]/50 card-shadow p-6 md:p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F5E9DA] flex items-center justify-center">
             <IconFactory name="Purchases" size={24} className="text-[#C9A227]" />
           </div>
           <h3 className="font-serif text-lg font-bold text-[#2C2419] mb-2">
-            Aucun achat pour cette date
+            {searchQuery ? 'Aucun résultat' : 'Aucun achat'}
           </h3>
           <p className="text-sm text-[#8C735A] mb-4">
-            {viewDate === todayStr() ? 'Commencez en ajoutant votre premier achat' : 'Aucun achat enregistre a cette date'}
+            {searchQuery
+              ? `Aucun achat ne contient &ldquo;${searchQuery}&rdquo; pour la période sélectionnée`
+              : periodPurchases.length === 0
+                ? (period === 'day' ? 'Commencez en ajoutant votre premier achat' : 'Aucun achat enregistré pour cette période')
+                : 'Aucun résultat ne correspond à votre recherche'}
           </p>
-          {viewDate === todayStr() && (
+          {periodPurchases.length === 0 && period === 'day' && (
             <button onClick={openModal} className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#C9A227] text-white text-sm font-medium rounded-xl shadow-lg shadow-[#C9A227]/20 hover:from-[#C9A227] hover:to-[#B89219] transition-all">
               Ajouter un achat
             </button>
@@ -262,6 +459,9 @@ export default function PurchasesPage() {
             <table className="w-full">
               <thead className="bg-[#FAF3EB]">
                 <tr>
+                  {period !== 'day' && (
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Date</th>
+                  )}
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Heure</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Fournisseur</th>
                   <th className="text-left px-6 py-4 text-xs font-semibold text-[#6B4F3A] uppercase tracking-wider">Articles</th>
@@ -271,10 +471,15 @@ export default function PurchasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8D5C4]/50">
-                {dayPurchases.map((purchase: any) => {
+                {filteredPurchases.map((purchase: any) => {
                   const purchaseDate = new Date(purchase.date)
+                  const showDate = period !== 'day'
+                  const dateStr = purchaseDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
                   return (
                     <tr key={purchase.id} className="hover:bg-[#FAF3EB]/50 transition-colors">
+                      {showDate && (
+                        <td className="px-6 py-4 text-sm text-[#6B4F3A] whitespace-nowrap">{dateStr}</td>
+                      )}
                       <td className="px-6 py-4 text-sm text-[#8C735A]">
                         {purchaseDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                       </td>
@@ -286,7 +491,7 @@ export default function PurchasesPage() {
                           <span className="font-medium text-[#2C2419] text-sm">{purchase.suppliers?.name || '-'}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-[#6B4F3A]">
+                      <td className="px-6 py-4 text-sm text-[#6B4F3A] max-w-[260px] truncate">
                         {purchase.purchase_items?.map((pi: any) =>
                           `${pi.products?.name || '?'} (${pi.quantity} ${pi.products?.unit || ''})`
                         ).join(', ') || '-'}
@@ -301,7 +506,7 @@ export default function PurchasesPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className="font-bold text-[#2C2419]">{purchase.total_amount} DA</span>
+                        <span className="font-bold text-[#2C2419]">{Number(purchase.total_amount).toFixed(2)} DA</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-1">
@@ -320,10 +525,15 @@ export default function PurchasesPage() {
             </table>
           </div>
           <div className="md:hidden divide-y divide-[#E8D5C4]/50">
-            {dayPurchases.map((purchase: any) => {
+            {filteredPurchases.map((purchase: any) => {
               const purchaseDate = new Date(purchase.date)
+              const showDate = period !== 'day'
+              const dateStr = purchaseDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
               return (
                 <div key={purchase.id} className="p-4">
+                  {showDate && (
+                    <p className="text-xs font-medium text-[#C9A227] mb-1">{dateStr}</p>
+                  )}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#C9A227] flex items-center justify-center flex-shrink-0">
@@ -336,7 +546,7 @@ export default function PurchasesPage() {
                         </span>
                       </div>
                     </div>
-                    <span className="font-bold text-[#2C2419] text-sm">{purchase.total_amount} DA</span>
+                    <span className="font-bold text-[#2C2419] text-sm">{Number(purchase.total_amount).toFixed(2)} DA</span>
                   </div>
                   <div className="text-xs text-[#6B4F3A] mb-3 ml-12">
                     {purchase.purchase_items?.map((pi: any) =>
@@ -387,7 +597,7 @@ export default function PurchasesPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#2C2419] mb-1">Date d'achat</label>
+                <label className="block text-sm font-medium text-[#2C2419] mb-1">Date d&apos;achat</label>
                 <input
                   type="date"
                   value={purchaseDate}

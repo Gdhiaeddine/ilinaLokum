@@ -195,6 +195,11 @@ export async function getReportsData(period: 'daily' | 'weekly' | 'monthly' | 'c
       amount: Number(e.amount),
       date: new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
     })),
+    sales: periodSales.map(s => ({
+      id: s.id,
+      total: Number(s.total_amount),
+      date: new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+    })),
   };
 }
 
@@ -254,6 +259,11 @@ export async function getDailyReportData() {
       description: e.description,
       amount: Number(e.amount),
       date: new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+    })),
+    sales: salesList.map(s => ({
+      id: s.id,
+      total: Number(s.total_amount),
+      date: new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
     })),
   };
 }
@@ -361,6 +371,11 @@ export async function getRangeReportData(startDateStr: string, endDateStr: strin
       description: e.description,
       amount: Number(e.amount),
       date: new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+    })),
+    sales: salesList.map(s => ({
+      id: s.id,
+      total: Number(s.total_amount),
+      date: new Date(s.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
     })),
   };
 }
